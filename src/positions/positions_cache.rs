@@ -1,0 +1,109 @@
+use std::collections::HashMap;
+
+use crate::{
+    bidask::MicroEngineBidAskCache,
+    positions::{position::MicroEnginePosition, positions_cache_index::PositionsCacheIndex},
+    settings::TradingSettingsCache,
+};
+
+pub struct MicroEnginePositionCalculationUpdate {
+    pub account_id: String,
+    pub position_id: String,
+    pub gross_pl: f64,
+}
+
+pub struct MicroEnginePositionCache {
+    indexes: PositionsCacheIndex,
+    positions: HashMap<String, MicroEnginePosition>,
+}
+
+impl MicroEnginePositionCache {
+    pub(crate) fn new(positions: Vec<impl Into<MicroEnginePosition>>) -> Self {
+        let mut indexes = PositionsCacheIndex::default();
+        let mut positions_cache = HashMap::new();
+
+        for position in positions {
+            let position: MicroEnginePosition = position.into();
+            indexes.add_index(&position);
+            positions_cache.insert(position.id.clone(), position);
+        }
+
+        Self {
+            indexes,
+            positions: positions_cache,
+        }
+    }
+
+    pub fn get_position(&self, id: &str) -> Option<&MicroEnginePosition> {
+        self.positions.get(id)
+    }
+
+    pub fn get_account_positions(&self, account_id: &str) -> Option<Vec<&MicroEnginePosition>> {
+        let ids = self.indexes.account_id_index.get(account_id)?;
+
+        let result = ids
+            .into_iter()
+            .filter_map(|x| self.positions.get(x))
+            .collect::<Vec<_>>();
+
+        Some(result)
+    }
+
+    pub fn get_trader_positions(&self, trader_id: &str) -> Option<Vec<&MicroEnginePosition>> {
+        let ids = self.indexes.trader_id_index.get(trader_id)?;
+
+        let result = ids
+            .into_iter()
+            .filter_map(|x| self.positions.get(x))
+            .collect::<Vec<_>>();
+
+        Some(result)
+    }
+
+    pub fn get_all_positions(&self) -> Vec<&MicroEnginePosition> {
+        self.positions.values().collect()
+    }
+
+    pub fn recalculate_positions_pl(
+        &mut self,
+        updated_prices: &[String],
+        bidask_cache: &MicroEngineBidAskCache,
+        settings_cache: &TradingSettingsCache,
+    ) -> Vec<MicroEnginePositionCalculationUpdate> {
+        let mut updated_positions = vec![];
+        for price_id in updated_prices.into_iter() {
+            let mut positions = vec![];
+
+            if let Some(direct_positions) = self.indexes.asset_pair_index.get(price_id) {
+                positions.extend(direct_positions);
+            }
+
+            if let Some(profit_positions) =
+                self.indexes.profit_price_subscription_indexes.get(price_id)
+            {
+                positions.extend(profit_positions);
+            }
+
+            if let Some(target_price) = bidask_cache.get_by_id(&price_id) {
+                for position_id in positions {
+                    if let Some(position) = self.positions.get_mut(position_id) {
+                        let Some(group_settings) =
+                            settings_cache.resolve_by_account(&position.account_id)
+                        else {
+                            continue;
+                        };
+
+                        position.update_bidask(target_price, bidask_cache, group_settings);
+
+                        updated_positions.push(MicroEnginePositionCalculationUpdate {
+                            account_id: position.account_id.clone(),
+                            position_id: position.id.clone(),
+                            gross_pl: position.get_gross_pl(),
+                        });
+                    }
+                }
+            }
+        }
+        updated_positions
+    }
+}

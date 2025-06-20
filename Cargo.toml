@@ -1,0 +1,11 @@
+[package]
+name = "yft-micro-engine"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tracing = "*"
+chrono = "*"
+tokio = {version = "*", features = ["sync", "macros"]}
+rust_decimal = "*"
+cross-calculations = { git = "https://github.com/my-cfd-platform/cross-calculations.git", tag = "0.1.8" }

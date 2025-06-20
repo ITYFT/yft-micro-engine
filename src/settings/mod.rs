@@ -1,0 +1,147 @@
+use rust_decimal::prelude::ToPrimitive;
+use rust_decimal::{Decimal, RoundingStrategy, prelude::FromPrimitive};
+use std::collections::HashMap;
+
+use crate::accounts::account_cache::MicroEngineAccountCache;
+use crate::bidask::dto::MicroEngineBidask;
+
+#[derive(Debug)]
+pub struct TradingSettingsCache {
+    accounts_mapping: HashMap<String, String>,
+    groups: HashMap<String, TradingGroupSettings>,
+}
+
+impl TradingSettingsCache {
+    pub(crate) fn new(
+        settings: Vec<impl Into<TradingGroupSettings>>,
+        accounts_cache: &MicroEngineAccountCache,
+    ) -> Self {
+        let mut groups = HashMap::new();
+
+        let accounts_mapping = accounts_cache
+            .get_all_accounts()
+            .into_iter()
+            .map(|x| (x.id.clone(), x.trading_group.clone()));
+
+        for group in settings {
+            let group: TradingGroupSettings = group.into();
+
+            groups.insert(group.id.clone(), group);
+        }
+
+        Self {
+            accounts_mapping: accounts_mapping.collect(),
+            groups,
+        }
+    }
+
+    pub fn resolve_by_account(&self, account: &str) -> Option<&TradingGroupSettings> {
+        let target_group = self.accounts_mapping.get(account)?;
+        self.groups.get(target_group)
+    }
+}
+
+#[derive(Debug)]
+pub struct TradingGroupSettings {
+    pub id: String,
+    pub hedge_coef: Option<f64>,
+    pub instruments: HashMap<String, TradingGroupInstrumentSettings>,
+}
+
+#[derive(Debug)]
+pub struct TradingGroupInstrumentSettings {
+    pub digits: u32,
+    pub max_leverage: Option<f64>,
+    pub markup_settings: Option<TradingGroupInstrumentMarkupSettings>,
+}
+
+#[derive(Debug)]
+pub struct TradingGroupInstrumentMarkupSettings {
+    pub markup_bid: f64,
+    pub markup_ask: f64,
+    pub min_spread: Option<f64>,
+    pub max_spread: Option<f64>,
+}
+
+impl TradingGroupInstrumentSettings {
+    pub fn mutate_bidask(&self, bidask: &mut MicroEngineBidask) {
+        if let Some(markup_settings) = &self.markup_settings {
+            bidask.apply_markup(markup_settings.markup_bid, markup_settings.markup_ask);
+
+            if let Some(max_spread) = markup_settings.max_spread {
+                apply_max_spread(bidask, max_spread, self.digits);
+            }
+
+            if let Some(min_spread) = markup_settings.min_spread {
+                apply_min_spread(bidask, min_spread, self.digits);
+            }
+        }
+    }
+}
+
+fn apply_max_spread(bid_ask: &mut MicroEngineBidask, max_spread: f64, digits: u32) {
+    let spread = calculate_spread(bid_ask, digits);
+    let max_spread = Decimal::from_f64(max_spread).unwrap();
+    let factor = i64::pow(10, digits as u32) as f64;
+    let pip = 1.0 / factor;
+
+    if spread > max_spread {
+        let spread_diff =
+            (spread - max_spread).round_dp_with_strategy(digits, RoundingStrategy::ToZero);
+
+        let spread_rounded = (spread_diff / Decimal::from_f64(2.0).unwrap())
+            .round_dp_with_strategy(digits, RoundingStrategy::ToZero);
+
+        let spread_rounded = spread_rounded.to_f64().unwrap();
+
+        let is_odd: bool = (spread_diff * Decimal::from_f64(factor).unwrap())
+            .to_i32()
+            .unwrap()
+            % 2
+            == 0;
+
+        if is_odd {
+            bid_ask.bid += spread_rounded;
+            bid_ask.ask -= spread_rounded;
+        } else {
+            bid_ask.bid += spread_rounded + pip;
+            bid_ask.ask -= spread_rounded;
+        }
+    }
+}
+
+fn apply_min_spread(bid_ask: &mut MicroEngineBidask, min_spread: f64, digits: u32) {
+    let spread = calculate_spread(bid_ask, digits);
+    let min_spread = Decimal::from_f64(min_spread).unwrap();
+    let factor = i64::pow(10, digits as u32) as f64;
+    let pip = 1.0 / factor;
+
+    if spread < min_spread {
+        let spread_diff =
+            (min_spread - spread).round_dp_with_strategy(digits, RoundingStrategy::ToZero);
+        let spread_rounded = (spread_diff / Decimal::from_f64(2.0).unwrap())
+            .round_dp_with_strategy(digits, RoundingStrategy::ToZero);
+
+        let spread_rounded = spread_rounded.to_f64().unwrap();
+        let is_odd: bool = (spread_diff * Decimal::from_f64(factor).unwrap())
+            .to_i32()
+            .unwrap()
+            % 2
+            == 0;
+
+        let spread_rounded = spread_rounded.to_f64().unwrap();
+        if is_odd {
+            bid_ask.bid -= spread_rounded;
+            bid_ask.ask += spread_rounded;
+        } else {
+            bid_ask.bid -= spread_rounded + pip;
+            bid_ask.ask += spread_rounded;
+        }
+    }
+}
+
+fn calculate_spread(bid_ask: &MicroEngineBidask, digits: u32) -> Decimal {
+    let bid = Decimal::from_f64(bid_ask.bid).unwrap();
+    let ask = Decimal::from_f64(bid_ask.ask).unwrap();
+    (ask - bid).round_dp_with_strategy(digits, RoundingStrategy::ToZero)
+}
