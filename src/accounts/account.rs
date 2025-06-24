@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::{
     positions::position::MicroEnginePosition,
-    settings::{TradingGroupInstrumentSettings, TradingGroupSettings},
+    settings::{TradingGroupInstrumentSettings, MicroEngineTradingGroupSettings},
 };
 
 pub struct MicroEngineAccountCalculationUpdate {
@@ -29,7 +29,7 @@ impl MicroEngineAccount {
     pub fn recalculate_account_data(
         &mut self,
         account_positions: &[&MicroEnginePosition],
-        settings: &TradingGroupSettings,
+        settings: &MicroEngineTradingGroupSettings,
     ) -> MicroEngineAccountCalculationUpdate {
         let (margin, gross_pl) =
             self.calculate_margin_and_gross_pl(account_positions, settings.hedge_coef, settings);
@@ -55,7 +55,7 @@ impl MicroEngineAccount {
         &self,
         account_positions: &[&MicroEnginePosition],
         hedge_coef: Option<f64>,
-        settings: &TradingGroupSettings,
+        settings: &MicroEngineTradingGroupSettings,
     ) -> (f64, f64) {
         let mut total_margin = 0.0;
         let mut total_gross_pl = 0.0;

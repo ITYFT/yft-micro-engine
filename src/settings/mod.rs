@@ -2,18 +2,19 @@ use rust_decimal::prelude::ToPrimitive;
 use rust_decimal::{Decimal, RoundingStrategy, prelude::FromPrimitive};
 use std::collections::HashMap;
 
+use crate::accounts::account::MicroEngineAccount;
 use crate::accounts::account_cache::MicroEngineAccountCache;
 use crate::bidask::dto::MicroEngineBidask;
 
 #[derive(Debug)]
 pub struct TradingSettingsCache {
     accounts_mapping: HashMap<String, String>,
-    groups: HashMap<String, TradingGroupSettings>,
+    groups: HashMap<String, MicroEngineTradingGroupSettings>,
 }
 
 impl TradingSettingsCache {
     pub(crate) fn new(
-        settings: Vec<impl Into<TradingGroupSettings>>,
+        settings: Vec<impl Into<MicroEngineTradingGroupSettings>>,
         accounts_cache: &MicroEngineAccountCache,
     ) -> Self {
         let mut groups = HashMap::new();
@@ -24,7 +25,7 @@ impl TradingSettingsCache {
             .map(|x| (x.id.clone(), x.trading_group.clone()));
 
         for group in settings {
-            let group: TradingGroupSettings = group.into();
+            let group: MicroEngineTradingGroupSettings = group.into();
 
             groups.insert(group.id.clone(), group);
         }
@@ -35,27 +36,49 @@ impl TradingSettingsCache {
         }
     }
 
-    pub fn resolve_by_account(&self, account: &str) -> Option<&TradingGroupSettings> {
+    pub fn resolve_by_account(&self, account: &str) -> Option<&MicroEngineTradingGroupSettings> {
         let target_group = self.accounts_mapping.get(account)?;
         self.groups.get(target_group)
     }
+
+    pub fn account_updated(&mut self, account: &MicroEngineAccount) {
+        self.accounts_mapping
+            .insert(account.id.clone(), account.trading_group.clone());
+    }
+
+    pub fn insert_or_replace_settings(
+        &mut self,
+        settings: MicroEngineTradingGroupSettings,
+    ) -> Vec<String> {
+        let settings_id = settings.id.clone();
+        let mut result = vec![];
+        self.groups.insert(settings.id.clone(), settings);
+
+        for (account_id, group_id) in &self.accounts_mapping {
+            if group_id == &settings_id {
+                result.push(account_id.clone());
+            }
+        }
+
+        result
+    }
 }
 
-#[derive(Debug)]
-pub struct TradingGroupSettings {
+#[derive(Debug, Clone)]
+pub struct MicroEngineTradingGroupSettings {
     pub id: String,
     pub hedge_coef: Option<f64>,
     pub instruments: HashMap<String, TradingGroupInstrumentSettings>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TradingGroupInstrumentSettings {
     pub digits: u32,
     pub max_leverage: Option<f64>,
     pub markup_settings: Option<TradingGroupInstrumentMarkupSettings>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TradingGroupInstrumentMarkupSettings {
     pub markup_bid: f64,
     pub markup_ask: f64,

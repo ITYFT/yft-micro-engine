@@ -13,7 +13,7 @@ use crate::{
         position::MicroEnginePosition,
         positions_cache::{MicroEnginePositionCache, MicroEnginePositionCalculationUpdate},
     },
-    settings::{TradingGroupSettings, TradingSettingsCache},
+    settings::{MicroEngineTradingGroupSettings, TradingSettingsCache},
 };
 
 pub mod accounts;
@@ -32,7 +32,7 @@ impl MicroEngine {
     pub fn initialize(
         accounts: Vec<impl Into<MicroEngineAccount>>,
         positions: Vec<impl Into<MicroEnginePosition>>,
-        settings: Vec<impl Into<TradingGroupSettings>>,
+        settings: Vec<impl Into<MicroEngineTradingGroupSettings>>,
         collaterals: HashSet<String>,
         instruments: HashSet<MicroEngineInstrument>,
         cached_prices: Vec<MicroEngineBidask>,
@@ -64,6 +64,30 @@ impl MicroEngine {
 
             price_cache.handle_new(&bidask);
         }
+    }
+
+    pub async fn trading_settings_changed(
+        &self,
+        settings: impl Into<MicroEngineTradingGroupSettings>,
+    ) {
+        let settings = settings.into();
+
+        let mut settings_cache = self.settings_cache.write().await;
+        settings_cache.insert_or_replace_settings(settings.clone());
+    }
+
+    pub async fn insert_or_update_account(
+        &self,
+        account: impl Into<MicroEngineAccount>,
+    ) -> Result<MicroEngineAccountCalculationUpdate, MicroEngineError> {
+        let account: MicroEngineAccount = account.into();
+        let (mut accounts, positions_cache, mut settings_cache) = tokio::join!(
+            self.accounts.write(),
+            self.positions_cache.read(),
+            self.settings_cache.write(),
+        );
+
+        accounts.insert_or_update_account(account, &mut settings_cache, &positions_cache)
     }
 
     pub async fn recalculate_accordint_to_updates(
@@ -101,4 +125,9 @@ impl MicroEngine {
 
         (accounts_update_result, positions_update_result)
     }
+}
+
+#[derive(Debug)]
+pub enum MicroEngineError {
+    AccountSettingsNotFound(String),
 }

@@ -1,19 +1,20 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::{
+    MicroEngineError,
     accounts::account::{MicroEngineAccount, MicroEngineAccountCalculationUpdate},
     positions::positions_cache::MicroEnginePositionCache,
     settings::TradingSettingsCache,
 };
 
 pub struct MicroEngineAccountCache {
-    trader_index: HashMap<String, Vec<String>>,
+    trader_index: HashMap<String, HashSet<String>>,
     accounts: HashMap<String, MicroEngineAccount>,
 }
 
 impl MicroEngineAccountCache {
-    pub (crate) fn new(accounts: Vec<impl Into<MicroEngineAccount>>) -> Self {
-        let mut trader_index: HashMap<String, Vec<String>> = HashMap::new();
+    pub(crate) fn new(accounts: Vec<impl Into<MicroEngineAccount>>) -> Self {
+        let mut trader_index: HashMap<String, HashSet<String>> = HashMap::new();
         let mut accounts_cache = HashMap::new();
 
         for account in accounts {
@@ -23,7 +24,7 @@ impl MicroEngineAccountCache {
             trader_index
                 .entry(trader_id)
                 .or_default()
-                .push(account.id.clone());
+                .insert(account.id.clone());
 
             accounts_cache.insert(account.id.clone(), account);
         }
@@ -66,9 +67,9 @@ impl MicroEngineAccountCache {
                 continue;
             };
 
-            let Some(account_positions) = positions_cache.get_account_positions(&account_id) else {
-                continue;
-            };
+            let account_positions = positions_cache
+                .get_account_positions(&account_id)
+                .unwrap_or_default();
 
             if let Some(account) = self.accounts.get_mut(*account_id) {
                 updated_accounts_data.push(
@@ -78,5 +79,36 @@ impl MicroEngineAccountCache {
             }
         }
         updated_accounts_data
+    }
+
+    pub(crate) fn insert_or_update_account(
+        &mut self,
+        account: MicroEngineAccount,
+        settings: &mut TradingSettingsCache,
+        positions_cache: &MicroEnginePositionCache,
+    ) -> Result<MicroEngineAccountCalculationUpdate, MicroEngineError> {
+        let mut account = account;
+
+        settings.account_updated(&account);
+
+        let settings = settings.resolve_by_account(&account.id).ok_or(
+            MicroEngineError::AccountSettingsNotFound(account.trading_group.clone()),
+        )?;
+
+        let account_positions = positions_cache
+            .get_account_positions(&account.id)
+            .unwrap_or_default();
+
+        let calculation_result =
+            account.recalculate_account_data(account_positions.as_slice(), settings);
+
+        self.trader_index
+            .entry(account.trader_id.clone())
+            .or_default()
+            .insert(account.id.clone());
+
+        self.accounts.insert(account.id.clone(), account);
+
+        Ok(calculation_result)
     }
 }

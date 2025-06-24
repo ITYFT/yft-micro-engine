@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use chrono::{DateTime, Utc};
 
-use crate::{bidask::{dto::MicroEngineBidask, MicroEngineBidAskCache}, settings::TradingGroupSettings};
+use crate::{bidask::{dto::MicroEngineBidask, MicroEngineBidAskCache}, settings::MicroEngineTradingGroupSettings};
 
 #[derive(Default, Clone, Debug)]
 pub struct MicroEnginePositionSwap {
@@ -41,7 +41,7 @@ impl MicroEnginePosition {
         &mut self,
         bidask: &MicroEngineBidask,
         bidask_cache: &MicroEngineBidAskCache,
-        settings: &TradingGroupSettings,
+        settings: &MicroEngineTradingGroupSettings,
     ) {
         let mut new_bidask = bidask.clone();
         let Some(instrument_settings) = settings.instruments.get(&bidask.id) else {
