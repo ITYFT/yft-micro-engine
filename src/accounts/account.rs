@@ -5,6 +5,7 @@ use crate::{
     settings::{TradingGroupInstrumentSettings, MicroEngineTradingGroupSettings},
 };
 
+#[derive(Debug, Clone)]
 pub struct MicroEngineAccountCalculationUpdate {
     pub account_id: String,
     pub margin: f64,
@@ -13,6 +14,7 @@ pub struct MicroEngineAccountCalculationUpdate {
     pub margin_level: f64,
 }
 
+#[derive(Debug, Clone)]
 pub struct MicroEngineAccount {
     pub id: String,
     pub trader_id: String,

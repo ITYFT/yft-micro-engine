@@ -125,6 +125,24 @@ impl MicroEngine {
 
         (accounts_update_result, positions_update_result)
     }
+
+    pub async fn query_account_cache(
+        &self,
+        call: impl Fn(&MicroEngineAccountCache) -> Vec<MicroEngineAccount>,
+    ) -> Vec<MicroEngineAccount> {
+        let accounts = self.accounts.read().await;
+
+        call(&accounts)
+    }
+
+    pub async fn query_positions_cache(
+        &self,
+        call: impl Fn(&MicroEnginePositionCache) -> Vec<MicroEnginePosition>,
+    ) -> Vec<MicroEnginePosition> {
+        let positions = self.positions_cache.read().await;
+
+        call(&positions)
+    }
 }
 
 #[derive(Debug)]
