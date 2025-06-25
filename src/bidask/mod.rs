@@ -29,7 +29,7 @@ impl CrossCalculationsPriceSource for MicroEngineBidAskCache {
 impl MicroEngineBidAskCache {
     pub fn new(
         collaterals: HashSet<String>,
-        instruments: HashSet<MicroEngineInstrument>,
+        instruments: Vec<MicroEngineInstrument>,
         cached_prices: Vec<MicroEngineBidask>,
     ) -> (MicroEngineBidAskCache, Vec<CrossCalculationsError>) {
         let required_crosses =

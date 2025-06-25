@@ -34,7 +34,7 @@ impl MicroEngine {
         positions: Vec<impl Into<MicroEnginePosition>>,
         settings: Vec<impl Into<MicroEngineTradingGroupSettings>>,
         collaterals: HashSet<String>,
-        instruments: HashSet<MicroEngineInstrument>,
+        instruments: Vec<MicroEngineInstrument>,
         cached_prices: Vec<MicroEngineBidask>,
     ) -> (Self, Vec<CrossCalculationsError>) {
         let accounts_cache = MicroEngineAccountCache::new(accounts);
