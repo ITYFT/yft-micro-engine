@@ -95,13 +95,21 @@ impl MicroEngine {
         position: impl Into<MicroEnginePosition>,
     ) -> Result<MicroEngineAccountCalculationUpdate, MicroEngineError> {
         let position: MicroEnginePosition = position.into();
-        let (mut accounts, mut positions_cache, settings_cache) = tokio::join!(
+        let (mut accounts, mut positions_cache, settings_cache, bidask_cache) = tokio::join!(
             self.accounts.write(),
             self.positions_cache.write(),
             self.settings_cache.read(),
+            self.bidask_cache.read(),
         );
 
-        let position: MicroEnginePosition = position.into();
+        let mut position: MicroEnginePosition = position.into();
+
+        let (_, sources) = bidask_cache
+            .get_price_with_source(&position.quote, &position.collateral)
+            .ok_or(MicroEngineError::ProfitPriceNotFond)?;
+
+        position.profit_price_assets_subscriptions =
+            HashSet::from_iter(sources.unwrap_or_default());
 
         positions_cache.add_position(position.clone());
 
@@ -190,6 +198,7 @@ impl MicroEngine {
 
 #[derive(Debug)]
 pub enum MicroEngineError {
+    ProfitPriceNotFond,
     AccountNotFound,
     PositionNotFound,
     AccountSettingsNotFound(String),
