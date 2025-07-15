@@ -64,6 +64,20 @@ impl MicroEnginePositionCache {
         self.positions.values().collect()
     }
 
+    pub fn add_position(&mut self, position: impl Into<MicroEnginePosition>) {
+        let position: MicroEnginePosition = position.into();
+
+        self.indexes.add_index(&position);
+        self.positions.insert(position.id.clone(), position);
+    }
+
+    pub fn remove_position(&mut self, id: &str) -> Option<MicroEnginePosition> {
+        let removed_position = self.positions.remove(id)?;
+        self.indexes.remove_indexes(&removed_position);
+        
+        Some(removed_position)
+    }
+
     pub fn recalculate_positions_pl(
         &mut self,
         updated_prices: &[String],

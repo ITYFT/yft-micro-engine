@@ -90,6 +90,49 @@ impl MicroEngine {
         accounts.insert_or_update_account(account, &mut settings_cache, &positions_cache)
     }
 
+    pub async fn insert_or_update_position(
+        &self,
+        position: impl Into<MicroEnginePosition>,
+    ) -> Result<MicroEngineAccountCalculationUpdate, MicroEngineError> {
+        let position: MicroEnginePosition = position.into();
+        let (mut accounts, mut positions_cache, settings_cache) = tokio::join!(
+            self.accounts.write(),
+            self.positions_cache.write(),
+            self.settings_cache.read(),
+        );
+
+        let position: MicroEnginePosition = position.into();
+
+        positions_cache.add_position(position.clone());
+
+        accounts
+            .recalculate_account_data(&settings_cache, &positions_cache, &position.account_id)
+            .ok_or(MicroEngineError::AccountNotFound)
+    }
+
+    pub async fn remove_position(
+        &self,
+        position_id: &str,
+    ) -> Result<MicroEngineAccountCalculationUpdate, MicroEngineError> {
+        let (mut accounts, mut positions_cache, settings_cache) = tokio::join!(
+            self.accounts.write(),
+            self.positions_cache.write(),
+            self.settings_cache.read(),
+        );
+
+        let removed_position = positions_cache
+            .remove_position(position_id)
+            .ok_or(MicroEngineError::PositionNotFound)?;
+
+        accounts
+            .recalculate_account_data(
+                &settings_cache,
+                &positions_cache,
+                &removed_position.account_id,
+            )
+            .ok_or(MicroEngineError::AccountNotFound)
+    }
+
     pub async fn recalculate_accordint_to_updates(
         &self,
     ) -> (
@@ -147,5 +190,7 @@ impl MicroEngine {
 
 #[derive(Debug)]
 pub enum MicroEngineError {
+    AccountNotFound,
+    PositionNotFound,
     AccountSettingsNotFound(String),
 }

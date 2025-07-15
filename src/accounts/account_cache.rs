@@ -54,6 +54,23 @@ impl MicroEngineAccountCache {
         self.accounts.values().collect()
     }
 
+    pub(crate) fn recalculate_account_data(
+        &mut self,
+        settings: &TradingSettingsCache,
+        positions_cache: &MicroEnginePositionCache,
+        account_id: &str,
+    ) -> Option<MicroEngineAccountCalculationUpdate> {
+        let account_settings = settings.resolve_by_account(account_id)?;
+
+        let account_positions = positions_cache
+            .get_account_positions(&account_id)
+            .unwrap_or_default();
+
+        let account = self.accounts.get_mut(account_id)?;
+
+        Some(account.recalculate_account_data(account_positions.as_slice(), account_settings))
+    }
+
     pub(crate) fn recalculate_accounts_data(
         &mut self,
         settings: &TradingSettingsCache,
