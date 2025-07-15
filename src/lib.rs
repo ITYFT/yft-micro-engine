@@ -25,7 +25,7 @@ pub struct MicroEngine {
     accounts: RwLock<MicroEngineAccountCache>,
     positions_cache: RwLock<MicroEnginePositionCache>,
     settings_cache: RwLock<TradingSettingsCache>,
-    bidask_cache: RwLock<MicroEngineBidAskCache>,
+    pub bidask_cache: RwLock<MicroEngineBidAskCache>,
     updated_assets: Mutex<HashSet<String>>,
 }
 impl MicroEngine {
