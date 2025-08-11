@@ -165,7 +165,7 @@ impl MicroEngine {
 
         let updated_accounts = positions_update_result
             .iter()
-            .map(|x| x.position_id.as_str())
+            .map(|x| x.account_id.as_str())
             .collect::<Vec<_>>();
 
         let accounts_update_result = accounts.recalculate_accounts_data(
@@ -345,7 +345,7 @@ mod tests {
         engine.handle_new_price(vec![new_price]).await;
 
         let (acc_updates, pos_updates) = engine.recalculate_accordint_to_updates().await;
-        assert!(acc_updates.is_empty());
+        assert_eq!(acc_updates.len(), 1);
         assert_eq!(pos_updates.len(), 1);
         assert_eq!(pos_updates[0].position_id, "POS1");
 
