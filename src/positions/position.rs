@@ -2,7 +2,10 @@ use std::collections::HashSet;
 
 use chrono::{DateTime, Utc};
 
-use crate::{bidask::{dto::MicroEngineBidask, MicroEngineBidAskCache}, settings::MicroEngineTradingGroupSettings};
+use crate::{
+    bidask::{MicroEngineBidAskCache, dto::MicroEngineBidask},
+    settings::MicroEngineTradingGroupSettings,
+};
 
 #[derive(Default, Clone, Debug)]
 pub struct MicroEnginePositionSwap {
@@ -59,5 +62,20 @@ impl MicroEnginePosition {
                 self.profit_bidask = profit_price
             }
         }
+
+        let open_price = self.open_bidask.get_open_price(self.is_buy);
+        let close_price = self.active_bidask.get_close_price(self.is_buy);
+
+        let diff = match self.is_buy {
+            true => close_price - open_price,
+            false => open_price - close_price,
+        };
+
+        let profit_price = match diff >= 0.0 {
+            true => self.profit_bidask.bid,
+            false => self.profit_bidask.ask,
+        };
+
+        self.pl = diff * self.lots_amount * self.lots_amount * profit_price;
     }
 }

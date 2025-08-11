@@ -6,6 +6,7 @@ use crate::{
     settings::TradingSettingsCache,
 };
 
+#[derive(Debug, Clone)]
 pub struct MicroEnginePositionCalculationUpdate {
     pub account_id: String,
     pub position_id: String,
