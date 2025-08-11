@@ -76,6 +76,6 @@ impl MicroEnginePosition {
             false => self.profit_bidask.ask,
         };
 
-        self.pl = diff * self.lots_amount * self.lots_amount * profit_price;
+        self.pl = diff * self.lots_amount * self.contract_size * profit_price;
     }
 }
