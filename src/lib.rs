@@ -147,15 +147,26 @@ impl MicroEngine {
         Vec<MicroEngineAccountCalculationUpdate>,
         Vec<MicroEnginePositionCalculationUpdate>,
     ) {
-        let (mut accounts, mut positions_cache, settings_cache, bidask_cache, mut updated_assets) = tokio::join!(
+        // Lock `updated_assets` separately to ensure consistent lock ordering.
+        // This matches `handle_new_price`, which locks `updated_assets` before
+        // `bidask_cache`.
+        let updated_prices: Vec<String> = {
+            let mut updated_assets = self.updated_assets.lock().await;
+            updated_assets.drain().collect()
+        };
+
+        // If there are no updates, we can return early without locking the
+        // remaining structures.
+        if updated_prices.is_empty() {
+            return (Vec::new(), Vec::new());
+        }
+
+        let (mut accounts, mut positions_cache, settings_cache, bidask_cache) = tokio::join!(
             self.accounts.write(),
             self.positions_cache.write(),
             self.settings_cache.read(),
             self.bidask_cache.read(),
-            self.updated_assets.lock()
         );
-
-        let updated_prices: Vec<String> = updated_assets.drain().collect();
 
         let positions_update_result = positions_cache.recalculate_positions_pl(
             &updated_prices,
