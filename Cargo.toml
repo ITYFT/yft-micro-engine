@@ -13,3 +13,7 @@ cross-calculations = { git = "https://github.com/my-cfd-platform/cross-calculati
 [dev-dependencies]
 criterion = { version = "0.5", features = ["async_tokio"] }
 tokio = { version = "*", features = ["sync", "macros", "rt", "rt-multi-thread"] }
+
+[[bench]]
+name = "micro_engine_bench"
+harness = false

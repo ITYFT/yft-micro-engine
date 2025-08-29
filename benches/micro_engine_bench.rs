@@ -58,6 +58,10 @@ fn sample_bidask() -> MicroEngineBidask {
     }
 }
 
+fn sample_collaterals() -> HashSet<String> {
+    HashSet::from(["USD".to_string()])
+}
+
 fn sample_position() -> MicroEnginePosition {
     let price = sample_bidask();
     MicroEnginePosition {
@@ -85,12 +89,11 @@ fn sample_position() -> MicroEnginePosition {
 fn bench_initialize(c: &mut Criterion) {
     c.bench_function("initialize", |b| {
         b.iter(|| {
-            let collaterals = HashSet::from(["USD".to_string()]);
             let (engine, errors) = MicroEngine::initialize(
                 vec![sample_account()],
                 Vec::<MicroEnginePosition>::new(),
                 vec![sample_settings()],
-                collaterals,
+                sample_collaterals(),
                 vec![sample_instrument()],
                 vec![sample_bidask()],
             );
@@ -101,12 +104,11 @@ fn bench_initialize(c: &mut Criterion) {
 }
 
 fn bench_insert_and_recalc(c: &mut Criterion) {
-    let collaterals = HashSet::from(["USD".to_string()]);
     let (engine, errors) = MicroEngine::initialize(
         vec![sample_account()],
         Vec::<MicroEnginePosition>::new(),
         vec![sample_settings()],
-        collaterals,
+        sample_collaterals(),
         vec![sample_instrument()],
         vec![sample_bidask()],
     );
@@ -124,6 +126,30 @@ fn bench_insert_and_recalc(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, bench_initialize, bench_insert_and_recalc);
-criterion_main!(benches);
+fn bench_handle_bidask(c: &mut Criterion) {
+    let (engine, errors) = MicroEngine::initialize(
+        vec![sample_account()],
+        Vec::<MicroEnginePosition>::new(),
+        vec![sample_settings()],
+        sample_collaterals(),
+        vec![sample_instrument()],
+        vec![sample_bidask()],
+    );
+    assert!(errors.is_empty());
 
+    let rt = tokio::runtime::Runtime::new().unwrap();
+
+    c.bench_function("handle_bidask", |b| {
+        b.to_async(&rt).iter(|| async {
+            engine.handle_new_price(vec![sample_bidask()]).await;
+        });
+    });
+}
+
+criterion_group!(
+    benches,
+    bench_initialize,
+    bench_insert_and_recalc,
+    bench_handle_bidask
+);
+criterion_main!(benches);
