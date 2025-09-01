@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 
+use ahash::RandomState;
 use cross_calculations::core::CrossCalculationsError;
 use tokio::sync::{Mutex, RwLock};
 
@@ -26,7 +27,7 @@ pub struct MicroEngine {
     positions_cache: RwLock<MicroEnginePositionCache>,
     settings_cache: RwLock<TradingSettingsCache>,
     pub bidask_cache: RwLock<MicroEngineBidAskCache>,
-    updated_assets: Mutex<HashSet<String>>,
+    updated_assets: Mutex<hashbrown::HashSet<String, RandomState>>,
 }
 impl MicroEngine {
     pub fn initialize(
@@ -46,23 +47,34 @@ impl MicroEngine {
                 settings_cache: RwLock::new(TradingSettingsCache::new(settings, &accounts_cache)),
                 accounts: RwLock::new(accounts_cache),
                 bidask_cache: RwLock::new(bidask_cache),
-                updated_assets: Mutex::new(HashSet::new()),
+                updated_assets: Mutex::new(hashbrown::HashSet::with_hasher(RandomState::new())),
             },
             bidask_errors,
         )
     }
 
     pub async fn handle_new_price(&self, new_bidask: Vec<impl Into<MicroEngineBidask>>) {
-        let mut updated_assets = self.updated_assets.lock().await;
-        let mut price_cache = self.bidask_cache.write().await;
+        let mut items = Vec::with_capacity(new_bidask.len());
+        for b in new_bidask {
+            let b: MicroEngineBidask = b.into();
+            items.push(b);
+        }
 
-        for bidask in new_bidask {
-            let bidask: MicroEngineBidask = bidask.into();
-            if !updated_assets.contains(&bidask.id) {
-                updated_assets.insert(bidask.id.clone());
+        {
+            let need = items.len();
+            let mut updated = self.updated_assets.lock().await;
+            let capacity = updated.capacity();
+            if capacity < need {
+                updated.reserve(need - capacity);
             }
+            updated.extend(items.iter().map(|b| b.id.clone()));
+        }
 
-            price_cache.handle_new(&bidask);
+        {
+            let mut price_cache = self.bidask_cache.write().await;
+            for b in items.into_iter() {
+                price_cache.handle_new(b);
+            }
         }
     }
 

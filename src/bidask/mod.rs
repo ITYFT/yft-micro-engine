@@ -43,22 +43,19 @@ impl MicroEngineBidAskCache {
             &instruments.iter().collect::<Vec<_>>(),
         );
 
-        let mut prices = HashMap::with_capacity(instruments.len());
-        let mut base_quote_index = HashMap::new();
-        let mut quote_base_index = HashMap::new();
+        let mut prices = HashMap::with_capacity(cached_prices.len().max(instruments.len()));
+        let mut base_quote_index: HashMap<String, HashMap<String, String>> = HashMap::with_capacity(instruments.len());
+        let mut quote_base_index: HashMap<String, HashMap<String, String>> = HashMap::with_capacity(instruments.len());
 
         for bid_ask in cached_prices {
-            prices.insert(bid_ask.id.clone(), bid_ask.clone());
+            let id   = bid_ask.id.clone();
+            let base = bid_ask.base.clone();
+            let quote= bid_ask.quote.clone();
 
-            let base_quote = base_quote_index
-                .entry(bid_ask.base.clone())
-                .or_insert_with(|| HashMap::new());
-            base_quote.insert(bid_ask.quote.clone(), bid_ask.id.clone());
+            prices.insert(id.clone(), bid_ask);
 
-            let quote_base = quote_base_index
-                .entry(bid_ask.quote.clone())
-                .or_insert_with(|| HashMap::new());
-            quote_base.insert(bid_ask.base.clone(), bid_ask.id.clone());
+            base_quote_index.entry(base.clone()).or_default().insert(quote.clone(), id.clone());
+            quote_base_index.entry(quote).or_default().insert(base, id);
         }
 
         (
@@ -113,21 +110,26 @@ impl MicroEngineBidAskCache {
 
         result
     }
-    pub fn handle_new(&mut self, bid_ask: &MicroEngineBidask) {
-        let old_price = self.prices.insert(bid_ask.id.clone(), bid_ask.clone());
+    
+    pub fn handle_new(&mut self, bid_ask: MicroEngineBidask) {
+        let id = bid_ask.id.clone();
+        let base = bid_ask.base.clone();
+        let quote = bid_ask.quote.clone();
+
+        let old_price = self.prices.insert(id.clone(), bid_ask);
 
         if old_price.is_none() {
             let base_quote = self
                 .base_quote_index
-                .entry(bid_ask.base.clone())
+                .entry(base.clone())
                 .or_default();
-            base_quote.insert(bid_ask.quote.clone(), bid_ask.id.clone());
+            base_quote.insert(quote.clone(), id.clone());
 
             let quote_base = self
                 .quote_base_index
-                .entry(bid_ask.quote.clone())
+                .entry(quote)
                 .or_default();
-            quote_base.insert(bid_ask.base.clone(), bid_ask.id.clone());
+            quote_base.insert(base, id);
         }
     }
 

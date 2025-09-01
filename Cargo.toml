@@ -9,6 +9,8 @@ chrono = "*"
 tokio = {version = "*", features = ["sync", "macros", "rt"]}
 rust_decimal = "*"
 cross-calculations = { git = "https://github.com/my-cfd-platform/cross-calculations.git", tag = "0.1.8" }
+ahash = "0.8.12"
+hashbrown = "0.16.0"
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["async_tokio"] }
