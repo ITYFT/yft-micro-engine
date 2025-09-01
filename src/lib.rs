@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, sync::Arc};
 
 use ahash::RandomState;
 use cross_calculations::core::CrossCalculationsError;
@@ -9,7 +9,7 @@ use crate::{
         account::{MicroEngineAccount, MicroEngineAccountCalculationUpdate},
         account_cache::MicroEngineAccountCache,
     },
-    bidask::{MicroEngineBidAskCache, MicroEngineInstrument, dto::MicroEngineBidask},
+    bidask::{dto::{AStr, MicroEngineBidask}, MicroEngineBidAskCache, MicroEngineInstrument},
     positions::{
         position::MicroEnginePosition,
         positions_cache::{MicroEnginePositionCache, MicroEnginePositionCalculationUpdate},
@@ -27,7 +27,7 @@ pub struct MicroEngine {
     positions_cache: RwLock<MicroEnginePositionCache>,
     settings_cache: RwLock<TradingSettingsCache>,
     pub bidask_cache: RwLock<MicroEngineBidAskCache>,
-    updated_assets: Mutex<hashbrown::HashSet<String, RandomState>>,
+    updated_assets: Mutex<hashbrown::HashSet<AStr, RandomState>>,
 }
 impl MicroEngine {
     pub fn initialize(
@@ -67,7 +67,7 @@ impl MicroEngine {
             if capacity < need {
                 updated.reserve(need - capacity);
             }
-            updated.extend(items.iter().map(|b| b.id.clone()));
+            updated.extend(items.iter().map(|b| Arc::clone(&b.id)));
         }
 
         {
@@ -162,7 +162,7 @@ impl MicroEngine {
         // Lock `updated_assets` separately to ensure consistent lock ordering.
         // This matches `handle_new_price`, which locks `updated_assets` before
         // `bidask_cache`.
-        let updated_prices: Vec<String> = {
+        let updated_prices: Vec<AStr> = {
             let mut updated_assets = self.updated_assets.lock().await;
             updated_assets.drain().collect()
         };
@@ -275,11 +275,11 @@ mod tests {
 
     fn sample_bidask() -> MicroEngineBidask {
         MicroEngineBidask {
-            id: "EURUSD".to_string(),
+            id: "EURUSD".to_string().into(),
             bid: 1.0,
             ask: 1.1,
-            base: "EUR".to_string(),
-            quote: "USD".to_string(),
+            base: "EUR".to_string().into(),
+            quote: "USD".to_string().into(),
         }
     }
 
@@ -359,11 +359,11 @@ mod tests {
 
         // update price
         let new_price = MicroEngineBidask {
-            id: "EURUSD".to_string(),
+            id: "EURUSD".to_string().into(),
             bid: 1.2,
             ask: 1.3,
-            base: "EUR".to_string(),
-            quote: "USD".to_string(),
+            base: "EUR".to_string().into(),
+            quote: "USD".to_string().into(),
         };
         engine.handle_new_price(vec![new_price]).await;
 

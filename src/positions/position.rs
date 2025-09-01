@@ -47,17 +47,17 @@ impl MicroEnginePosition {
         settings: &MicroEngineTradingGroupSettings,
     ) {
         let mut new_bidask = bidask.clone();
-        let Some(instrument_settings) = settings.instruments.get(&bidask.id) else {
+        let Some(instrument_settings) = settings.instruments.get(bidask.id.as_ref()) else {
             return;
         };
 
         instrument_settings.mutate_bidask(&mut new_bidask);
 
-        if self.asset_pair == bidask.id {
+        if self.asset_pair == bidask.id.as_ref() {
             self.active_bidask = bidask.clone();
         }
 
-        if self.profit_price_assets_subscriptions.contains(&bidask.id) {
+        if self.profit_price_assets_subscriptions.contains(bidask.id.as_ref()) {
             if let Some(profit_price) = bidask_cache.get_price(&self.quote, &self.collateral) {
                 self.profit_bidask = profit_price
             }

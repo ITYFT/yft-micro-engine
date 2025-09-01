@@ -56,11 +56,11 @@ fn sample_instrument() -> MicroEngineInstrument {
 
 fn sample_bidask() -> MicroEngineBidask {
     MicroEngineBidask {
-        id: "EURUSD".to_string(),
+        id: "EURUSD".to_string().into(),
         bid: 1.0,
         ask: 1.1,
-        base: "EUR".to_string(),
-        quote: "USD".to_string(),
+        base: "EUR".to_string().into(),
+        quote: "USD".to_string().into(),
     }
 }
 
@@ -107,7 +107,7 @@ fn build_engine() -> Arc<MicroEngine> {
 fn gen_prices_unique(n: usize) -> Vec<MicroEngineBidask> {
     (0..n)
         .map(|i| MicroEngineBidask {
-            id: format!("EURUSD{i}"),
+            id: format!("EURUSD{i}").into(),
             bid: 1.0 + (i as f64) * 1e-6,
             ask: 1.1 + (i as f64) * 1e-6,
             base: "EUR".into(),

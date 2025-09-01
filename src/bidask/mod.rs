@@ -1,19 +1,19 @@
-use std::collections::{HashMap, HashSet};
+use std::{collections::{HashMap, HashSet}, sync::Arc};
 
 use cross_calculations::core::{
     CrossCalculationsCrossPairsMatrix, CrossCalculationsError, CrossCalculationsPriceSource,
     CrossCalculationsSourceInstrument,
 };
 
-use crate::bidask::dto::MicroEngineBidask;
+use crate::bidask::dto::{AStr, MicroEngineBidask};
 
 pub mod dto;
 
 #[derive(Debug)]
 pub struct MicroEngineBidAskCache {
-    prices: HashMap<String, MicroEngineBidask>,
-    base_quote_index: HashMap<String, HashMap<String, String>>,
-    quote_base_index: HashMap<String, HashMap<String, String>>,
+    prices: HashMap<AStr, MicroEngineBidask>,
+    base_quote_index: HashMap<AStr, HashMap<AStr, AStr>>,
+    quote_base_index: HashMap<AStr, HashMap<AStr, AStr>>,
     cross_matrix: CrossCalculationsCrossPairsMatrix,
 }
 
@@ -44,17 +44,17 @@ impl MicroEngineBidAskCache {
         );
 
         let mut prices = HashMap::with_capacity(cached_prices.len().max(instruments.len()));
-        let mut base_quote_index: HashMap<String, HashMap<String, String>> = HashMap::with_capacity(instruments.len());
-        let mut quote_base_index: HashMap<String, HashMap<String, String>> = HashMap::with_capacity(instruments.len());
+        let mut base_quote_index: HashMap<AStr, HashMap<AStr, AStr>> = HashMap::with_capacity(instruments.len());
+        let mut quote_base_index: HashMap<AStr, HashMap<AStr, AStr>> = HashMap::with_capacity(instruments.len());
 
         for bid_ask in cached_prices {
             let id   = bid_ask.id.clone();
             let base = bid_ask.base.clone();
             let quote= bid_ask.quote.clone();
 
-            prices.insert(id.clone(), bid_ask);
+            prices.insert(Arc::clone(&bid_ask.id), bid_ask);
 
-            base_quote_index.entry(base.clone()).or_default().insert(quote.clone(), id.clone());
+            base_quote_index.entry(Arc::clone(&base)).or_default().insert(Arc::clone(&quote), id.clone());
             quote_base_index.entry(quote).or_default().insert(base, id);
         }
 
@@ -116,14 +116,14 @@ impl MicroEngineBidAskCache {
         let base = bid_ask.base.clone();
         let quote = bid_ask.quote.clone();
 
-        let old_price = self.prices.insert(id.clone(), bid_ask);
+        let old_price = self.prices.insert(Arc::clone(&id), bid_ask);
 
         if old_price.is_none() {
             let base_quote = self
                 .base_quote_index
                 .entry(base.clone())
                 .or_default();
-            base_quote.insert(quote.clone(), id.clone());
+            base_quote.insert(quote.clone(), Arc::clone(&id));
 
             let quote_base = self
                 .quote_base_index
@@ -133,7 +133,7 @@ impl MicroEngineBidAskCache {
         }
     }
 
-    pub fn get_all(&self) -> HashMap<String, MicroEngineBidask> {
+    pub fn get_all(&self) -> HashMap<AStr, MicroEngineBidask> {
         self.prices.clone()
     }
 
@@ -151,7 +151,7 @@ impl MicroEngineBidAskCache {
         }
 
         if let Some(reverse) = self.get_quote_base(base, quote) {
-            return Some((reverse.reverse().clone(), Some(vec![reverse.id.clone()])));
+            return Some((reverse.reverse().clone(), Some(vec![reverse.id.to_string()])));
         }
 
         let cross =
