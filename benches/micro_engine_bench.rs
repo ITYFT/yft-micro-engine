@@ -1,12 +1,18 @@
-use criterion::{criterion_group, criterion_main, Criterion, black_box};
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
+
+use criterion::{
+    BatchSize, BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main,
+};
+use tokio::runtime::Builder;
+
 use yft_micro_engine::{
     MicroEngine,
-    positions::position::MicroEnginePosition,
-    bidask::{dto::MicroEngineBidask, MicroEngineInstrument},
     accounts::account::MicroEngineAccount,
+    bidask::{MicroEngineInstrument, dto::MicroEngineBidask},
+    positions::position::MicroEnginePosition,
     settings::{MicroEngineTradingGroupSettings, TradingGroupInstrumentSettings},
 };
-use std::collections::{HashMap, HashSet};
 
 fn sample_settings() -> MicroEngineTradingGroupSettings {
     let mut instruments = HashMap::new();
@@ -50,11 +56,11 @@ fn sample_instrument() -> MicroEngineInstrument {
 
 fn sample_bidask() -> MicroEngineBidask {
     MicroEngineBidask {
-        id: "EURUSD".to_string(),
+        id: "EURUSD".to_string().into(),
         bid: 1.0,
         ask: 1.1,
-        base: "EUR".to_string(),
-        quote: "USD".to_string(),
+        base: "EUR".to_string().into(),
+        quote: "USD".to_string().into(),
     }
 }
 
@@ -86,6 +92,56 @@ fn sample_position() -> MicroEnginePosition {
     }
 }
 
+fn build_engine() -> Arc<MicroEngine> {
+    let (engine, _errors) = MicroEngine::initialize(
+        vec![sample_account()],
+        Vec::<MicroEnginePosition>::new(),
+        vec![sample_settings()],
+        sample_collaterals(),
+        vec![sample_instrument()],
+        vec![sample_bidask()],
+    );
+    Arc::new(engine)
+}
+
+fn gen_prices_unique(n: usize) -> Vec<MicroEngineBidask> {
+    (0..n)
+        .map(|i| MicroEngineBidask {
+            id: format!("EURUSD{i}").into(),
+            bid: 1.0 + (i as f64) * 1e-6,
+            ask: 1.1 + (i as f64) * 1e-6,
+            base: "EUR".into(),
+            quote: "USD".into(),
+        })
+        .collect()
+}
+
+fn gen_positions(n: usize) -> Vec<MicroEnginePosition> {
+    let px = sample_bidask();
+    (0..n)
+        .map(|i| MicroEnginePosition {
+            id: format!("POS{i}"),
+            trader_id: "TR1".into(),
+            account_id: "ACC1".into(),
+            base: "EUR".into(),
+            quote: "USD".into(),
+            collateral: "USD".into(),
+            asset_pair: "EURUSD".into(),
+            lots_amount: 1.0,
+            contract_size: 1.0,
+            is_buy: i % 2 == 0,
+            pl: 0.0,
+            commission: 0.0,
+            open_bidask: px.clone(),
+            active_bidask: px.clone(),
+            margin_bidask: px.clone(),
+            profit_bidask: MicroEngineBidask::create_blank(),
+            profit_price_assets_subscriptions: HashSet::new(),
+            swaps_sum: 0.0,
+        })
+        .collect()
+}
+
 fn bench_initialize(c: &mut Criterion) {
     c.bench_function("initialize", |b| {
         b.iter(|| {
@@ -103,53 +159,96 @@ fn bench_initialize(c: &mut Criterion) {
     });
 }
 
-fn bench_insert_and_recalc(c: &mut Criterion) {
-    let (engine, errors) = MicroEngine::initialize(
-        vec![sample_account()],
-        Vec::<MicroEnginePosition>::new(),
-        vec![sample_settings()],
-        sample_collaterals(),
-        vec![sample_instrument()],
-        vec![sample_bidask()],
-    );
-    assert!(errors.is_empty());
+fn bench_recalc_after_single_price(c: &mut Criterion) {
+    let rt = Builder::new_current_thread().enable_all().build().unwrap();
+    let engine = build_engine();
+    rt.block_on(async {
+        engine
+            .insert_or_update_position(sample_position())
+            .await
+            .unwrap();
+    });
 
-    let rt = tokio::runtime::Runtime::new().unwrap();
-
-    c.bench_function("insert_and_recalc", |b| {
+    c.bench_function("recalc_after_single_price", |b| {
         b.to_async(&rt).iter(|| async {
-            let position = sample_position();
-            engine.insert_or_update_position(position).await.unwrap();
             engine.handle_new_price(vec![sample_bidask()]).await;
-            engine.recalculate_accordint_to_updates().await;
+            let _ = engine.recalculate_accordint_to_updates().await;
         });
     });
 }
 
-fn bench_handle_bidask(c: &mut Criterion) {
-    let (engine, errors) = MicroEngine::initialize(
-        vec![sample_account()],
-        Vec::<MicroEnginePosition>::new(),
-        vec![sample_settings()],
-        sample_collaterals(),
-        vec![sample_instrument()],
-        vec![sample_bidask()],
-    );
-    assert!(errors.is_empty());
+fn bench_handle_bidask_hot(c: &mut Criterion) {
+    let rt = Builder::new_current_thread().enable_all().build().unwrap();
+    let engine = build_engine();
 
-    let rt = tokio::runtime::Runtime::new().unwrap();
-
-    c.bench_function("handle_bidask", |b| {
+    c.bench_function("handle_bidask/hot_same_id", |b| {
         b.to_async(&rt).iter(|| async {
-            engine.handle_new_price(vec![sample_bidask()]).await;
+            engine
+                .handle_new_price(black_box(vec![sample_bidask()]))
+                .await;
         });
     });
+}
+
+fn bench_handle_new_price_large_batches_fresh(c: &mut Criterion) {
+    let rt = Builder::new_current_thread().enable_all().build().unwrap();
+    let mut group = c.benchmark_group("handle_new_price/large_batches_fresh_engine");
+    for &n in &[1_000usize, 10_000, 50_000] {
+        group.throughput(Throughput::Elements(n as u64));
+        group.bench_with_input(BenchmarkId::from_parameter(n), &n, |b, &n| {
+            b.to_async(&rt).iter_batched(
+                || (build_engine(), black_box(gen_prices_unique(n))),
+                |(engine, prices)| async move {
+                    engine.handle_new_price(prices).await;
+                },
+                BatchSize::LargeInput,
+            );
+        });
+    }
+    group.finish();
+}
+
+fn bench_handle_new_price_heavy_state(c: &mut Criterion) {
+    let rt = Builder::new_current_thread().enable_all().build().unwrap();
+
+    let engine = {
+        let (e, _errors) = MicroEngine::initialize(
+            vec![sample_account()],
+            gen_positions(10_000),
+            vec![sample_settings()],
+            sample_collaterals(),
+            vec![sample_instrument()],
+            vec![sample_bidask()],
+        );
+        Arc::new(e)
+    };
+
+    let mut group = c.benchmark_group("handle_new_price/heavy_state");
+    for &n in &[1_000usize, 10_000, 50_000] {
+        group.throughput(Throughput::Elements(n as u64));
+        group.bench_with_input(BenchmarkId::from_parameter(n), &n, |b, &n| {
+            b.to_async(&rt).iter_batched(
+                || black_box(gen_prices_unique(n)),
+                |prices| {
+                    let engine = engine.clone();
+                    async move {
+                        engine.handle_new_price(prices).await;
+                        let _ = engine.recalculate_accordint_to_updates().await;
+                    }
+                },
+                BatchSize::LargeInput,
+            );
+        });
+    }
+    group.finish();
 }
 
 criterion_group!(
     benches,
     bench_initialize,
-    bench_insert_and_recalc,
-    bench_handle_bidask
+    bench_recalc_after_single_price,
+    bench_handle_bidask_hot,
+    bench_handle_new_price_large_batches_fresh,
+    bench_handle_new_price_heavy_state
 );
 criterion_main!(benches);

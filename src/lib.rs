@@ -1,5 +1,6 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, sync::Arc};
 
+use ahash::RandomState;
 use cross_calculations::core::CrossCalculationsError;
 use tokio::sync::{Mutex, RwLock};
 
@@ -8,7 +9,7 @@ use crate::{
         account::{MicroEngineAccount, MicroEngineAccountCalculationUpdate},
         account_cache::MicroEngineAccountCache,
     },
-    bidask::{MicroEngineBidAskCache, MicroEngineInstrument, dto::MicroEngineBidask},
+    bidask::{dto::{AStr, MicroEngineBidask}, MicroEngineBidAskCache, MicroEngineInstrument},
     positions::{
         position::MicroEnginePosition,
         positions_cache::{MicroEnginePositionCache, MicroEnginePositionCalculationUpdate},
@@ -26,7 +27,7 @@ pub struct MicroEngine {
     positions_cache: RwLock<MicroEnginePositionCache>,
     settings_cache: RwLock<TradingSettingsCache>,
     pub bidask_cache: RwLock<MicroEngineBidAskCache>,
-    updated_assets: Mutex<HashSet<String>>,
+    updated_assets: Mutex<hashbrown::HashSet<AStr, RandomState>>,
 }
 impl MicroEngine {
     pub fn initialize(
@@ -46,23 +47,34 @@ impl MicroEngine {
                 settings_cache: RwLock::new(TradingSettingsCache::new(settings, &accounts_cache)),
                 accounts: RwLock::new(accounts_cache),
                 bidask_cache: RwLock::new(bidask_cache),
-                updated_assets: Mutex::new(HashSet::new()),
+                updated_assets: Mutex::new(hashbrown::HashSet::with_hasher(RandomState::new())),
             },
             bidask_errors,
         )
     }
 
     pub async fn handle_new_price(&self, new_bidask: Vec<impl Into<MicroEngineBidask>>) {
-        let mut updated_assets = self.updated_assets.lock().await;
-        let mut price_cache = self.bidask_cache.write().await;
+        let mut items = Vec::with_capacity(new_bidask.len());
+        for b in new_bidask {
+            let b: MicroEngineBidask = b.into();
+            items.push(b);
+        }
 
-        for bidask in new_bidask {
-            let bidask: MicroEngineBidask = bidask.into();
-            if !updated_assets.contains(&bidask.id) {
-                updated_assets.insert(bidask.id.clone());
+        {
+            let need = items.len();
+            let mut updated = self.updated_assets.lock().await;
+            let capacity = updated.capacity();
+            if capacity < need {
+                updated.reserve(need - capacity);
             }
+            updated.extend(items.iter().map(|b| Arc::clone(&b.id)));
+        }
 
-            price_cache.handle_new(&bidask);
+        {
+            let mut price_cache = self.bidask_cache.write().await;
+            for b in items.into_iter() {
+                price_cache.handle_new(b);
+            }
         }
     }
 
@@ -150,7 +162,7 @@ impl MicroEngine {
         // Lock `updated_assets` separately to ensure consistent lock ordering.
         // This matches `handle_new_price`, which locks `updated_assets` before
         // `bidask_cache`.
-        let updated_prices: Vec<String> = {
+        let updated_prices: Vec<AStr> = {
             let mut updated_assets = self.updated_assets.lock().await;
             updated_assets.drain().collect()
         };
@@ -263,11 +275,11 @@ mod tests {
 
     fn sample_bidask() -> MicroEngineBidask {
         MicroEngineBidask {
-            id: "EURUSD".to_string(),
+            id: "EURUSD".to_string().into(),
             bid: 1.0,
             ask: 1.1,
-            base: "EUR".to_string(),
-            quote: "USD".to_string(),
+            base: "EUR".to_string().into(),
+            quote: "USD".to_string().into(),
         }
     }
 
@@ -347,11 +359,11 @@ mod tests {
 
         // update price
         let new_price = MicroEngineBidask {
-            id: "EURUSD".to_string(),
+            id: "EURUSD".to_string().into(),
             bid: 1.2,
             ask: 1.3,
-            base: "EUR".to_string(),
-            quote: "USD".to_string(),
+            base: "EUR".to_string().into(),
+            quote: "USD".to_string().into(),
         };
         engine.handle_new_price(vec![new_price]).await;
 

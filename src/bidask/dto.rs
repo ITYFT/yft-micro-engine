@@ -1,13 +1,17 @@
+use std::sync::Arc;
+
 use chrono::Utc;
 use cross_calculations::core::{CrossCalculationsBidAsk, CrossCalculationsCrossRate};
 
+pub type AStr = Arc<str>;
+
 #[derive(Default, Clone, Debug)]
 pub struct MicroEngineBidask {
-    pub id: String,
+    pub id: AStr,
     pub bid: f64,
     pub ask: f64,
-    pub base: String,
-    pub quote: String,
+    pub base: AStr,
+    pub quote: AStr,
 }
 
 impl CrossCalculationsBidAsk for MicroEngineBidask {
@@ -70,8 +74,9 @@ impl MicroEngineBidask {
     }
 
     pub fn reverse(&self) -> Self {
+        let rid = Arc::<str>::from(format!("REVERSE-{}", self.id));
         Self {
-            id: format!("REVERSE-{}", self.id.clone()),
+            id: rid,
             bid: 1.0 / self.ask,
             ask: 1.0 / self.bid,
             base: self.quote.clone(),
@@ -81,25 +86,28 @@ impl MicroEngineBidask {
 
     pub fn create_blank() -> Self {
         Self {
-            id: String::default(),
+            id: Arc::<str>::from(""),
             bid: 1.0,
             ask: 1.0,
-            base: String::default(),
-            quote: String::default(),
+            base: Arc::<str>::from(""),
+            quote:Arc::<str>::from(""),
         }
     }
+
 }
 
 impl From<CrossCalculationsCrossRate> for MicroEngineBidask {
     fn from(value: CrossCalculationsCrossRate) -> Self {
-        Self {
-            id: value.source.map_or(value.base.clone(), |(left, right)| {
-                format!("{}-{}", left.get_source(), right.get_source())
-            }),
-            bid: value.bid,
-            ask: value.ask,
-            base: value.base,
-            quote: value.quote,
+        let id = value.source.map_or(value.base.clone(), |(l, r)| {
+            format!("{}-{}", l.get_source(), r.get_source())
+        });
+        MicroEngineBidask {
+            id:   Arc::<str>::from(id),
+            bid:  value.bid,
+            ask:  value.ask,
+            base: Arc::<str>::from(value.base),
+            quote:Arc::<str>::from(value.quote),
         }
     }
 }
+

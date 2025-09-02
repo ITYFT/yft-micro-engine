@@ -75,11 +75,11 @@ mod profit_subscription_tests {
 
     fn dummy_bidask() -> MicroEngineBidask {
         MicroEngineBidask {
-            id: "EURUSD".to_string(),
+            id: "EURUSD".to_string().into(),
             bid: 1.1,
             ask: 1.2,
-            base: "1.2".to_string(),
-            quote: "1.2".to_string(),
+            base: "1.2".to_string().into(),
+            quote: "1.2".to_string().into(),
         }
     }
 

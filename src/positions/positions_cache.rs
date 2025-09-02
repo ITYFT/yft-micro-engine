@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::{
-    bidask::MicroEngineBidAskCache,
+    bidask::{dto::AStr, MicroEngineBidAskCache},
     positions::{position::MicroEnginePosition, positions_cache_index::PositionsCacheIndex},
     settings::TradingSettingsCache,
 };
@@ -81,7 +81,7 @@ impl MicroEnginePositionCache {
 
     pub fn recalculate_positions_pl(
         &mut self,
-        updated_prices: &[String],
+        updated_prices: &[AStr],
         bidask_cache: &MicroEngineBidAskCache,
         settings_cache: &TradingSettingsCache,
     ) -> Vec<MicroEnginePositionCalculationUpdate> {
@@ -89,17 +89,17 @@ impl MicroEnginePositionCache {
         for price_id in updated_prices.into_iter() {
             let mut positions = vec![];
 
-            if let Some(direct_positions) = self.indexes.asset_pair_index.get(price_id) {
+            if let Some(direct_positions) = self.indexes.asset_pair_index.get(price_id.as_ref()) {
                 positions.extend(direct_positions);
             }
 
             if let Some(profit_positions) =
-                self.indexes.profit_price_subscription_indexes.get(price_id)
+                self.indexes.profit_price_subscription_indexes.get(price_id.as_ref())
             {
                 positions.extend(profit_positions);
             }
 
-            if let Some(target_price) = bidask_cache.get_by_id(&price_id) {
+            if let Some(target_price) = bidask_cache.get_by_id(price_id.as_ref()) {
                 for position_id in positions {
                     if let Some(position) = self.positions.get_mut(position_id) {
                         let Some(group_settings) =
