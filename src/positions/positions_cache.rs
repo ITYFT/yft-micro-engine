@@ -19,12 +19,24 @@ pub struct MicroEnginePositionCache {
 }
 
 impl MicroEnginePositionCache {
-    pub(crate) fn new(positions: Vec<impl Into<MicroEnginePosition>>) -> Self {
+    pub(crate) fn new(
+        bidask_cache: &MicroEngineBidAskCache,
+        positions: Vec<impl Into<MicroEnginePosition>>,
+    ) -> Self {
         let mut indexes = PositionsCacheIndex::default();
         let mut positions_cache = HashMap::new();
 
         for position in positions {
-            let position: MicroEnginePosition = position.into();
+            let mut position: MicroEnginePosition = position.into();
+
+            if position.quote != position.collateral {
+                if let Some((_, sources)) =
+                    bidask_cache.get_price_with_source(&position.quote, &position.collateral)
+                {
+                    position.profit_price_assets_subscriptions = sources.unwrap_or_default();
+                }
+            }
+
             indexes.add_index(&position);
             positions_cache.insert(position.id.clone(), position);
         }

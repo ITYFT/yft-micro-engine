@@ -43,7 +43,7 @@ impl MicroEngine {
             MicroEngineBidAskCache::new(collaterals, instruments, cached_prices);
         (
             Self {
-                positions_cache: RwLock::new(MicroEnginePositionCache::new(positions)),
+                positions_cache: RwLock::new(MicroEnginePositionCache::new(&bidask_cache, positions)),
                 settings_cache: RwLock::new(TradingSettingsCache::new(settings, &accounts_cache)),
                 accounts: RwLock::new(accounts_cache),
                 bidask_cache: RwLock::new(bidask_cache),
