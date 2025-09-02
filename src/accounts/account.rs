@@ -12,6 +12,7 @@ pub struct MicroEngineAccountCalculationUpdate {
     pub equity: f64,
     pub free_margin: f64,
     pub margin_level: f64,
+    pub total_gross: f64,
 }
 
 #[derive(Debug, Clone)]
@@ -25,7 +26,6 @@ pub struct MicroEngineAccount {
     pub equity: f64,
     pub free_margin: f64,
     pub margin_level: f64,
-    pub total_gross: f64,
 }
 
 impl MicroEngineAccount {
@@ -45,14 +45,13 @@ impl MicroEngineAccount {
             false => self.equity / margin * 100.0,
         };
 
-        self.total_gross = gross_pl;
-
         MicroEngineAccountCalculationUpdate {
             account_id: self.id.clone(),
             margin: self.margin,
             equity: self.equity,
             free_margin: self.free_margin,
             margin_level: self.margin_level,
+            total_gross: gross_pl
         }
     }
 
