@@ -252,6 +252,7 @@ mod tests {
             equity: 0.0,
             free_margin: 0.0,
             margin_level: 0.0,
+            total_gross: 0.0,
         }
     }
 
