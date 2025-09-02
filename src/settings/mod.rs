@@ -1,3 +1,4 @@
+use ahash::AHashMap;
 use rust_decimal::prelude::ToPrimitive;
 use rust_decimal::{Decimal, RoundingStrategy, prelude::FromPrimitive};
 use std::collections::HashMap;
@@ -8,8 +9,8 @@ use crate::bidask::dto::MicroEngineBidask;
 
 #[derive(Debug)]
 pub struct TradingSettingsCache {
-    accounts_mapping: HashMap<String, String>,
-    groups: HashMap<String, MicroEngineTradingGroupSettings>,
+    accounts_mapping: AHashMap<String, String>,
+    groups: AHashMap<String, MicroEngineTradingGroupSettings>,
 }
 
 impl TradingSettingsCache {
@@ -17,7 +18,7 @@ impl TradingSettingsCache {
         settings: Vec<impl Into<MicroEngineTradingGroupSettings>>,
         accounts_cache: &MicroEngineAccountCache,
     ) -> Self {
-        let mut groups = HashMap::new();
+        let mut groups = AHashMap::new();
 
         let accounts_mapping = accounts_cache
             .get_all_accounts()
@@ -87,6 +88,25 @@ pub struct TradingGroupInstrumentMarkupSettings {
 }
 
 impl TradingGroupInstrumentSettings {
+    pub fn calculate_bidask(&self, bidask: &MicroEngineBidask) -> (f64, f64) {
+        let Some(markup_settings) = &self.markup_settings else {
+            return (bidask.bid, bidask.ask);
+        };
+
+        let (mut bid, mut ask) =
+            bidask.get_bid_ask_with_markup(markup_settings.markup_bid, markup_settings.markup_ask);
+
+        if let Some(max_spread) = markup_settings.max_spread {
+            (bid, ask) = calculate_max_spread(bid, ask, max_spread, self.digits as u32);
+        }
+
+        if let Some(min_spread) = markup_settings.min_spread {
+            (bid, ask) = calculate_min_spread(bid, ask, min_spread, self.digits as u32);
+        }
+
+        (bid, ask)
+    }
+
     pub fn mutate_bidask(&self, bidask: &mut MicroEngineBidask) {
         if let Some(markup_settings) = &self.markup_settings {
             bidask.apply_markup(markup_settings.markup_bid, markup_settings.markup_ask);
@@ -102,8 +122,68 @@ impl TradingGroupInstrumentSettings {
     }
 }
 
+fn calculate_max_spread(bid: f64, ask: f64, max_spread: f64, digits: u32) -> (f64, f64) {
+    let spread = calculate_spread(bid, ask, digits);
+    let max_spread = Decimal::from_f64(max_spread).unwrap();
+    let factor = i64::pow(10, digits as u32) as f64;
+    let pip = 1.0 / factor;
+
+    if spread > max_spread {
+        let spread_diff =
+            (spread - max_spread).round_dp_with_strategy(digits, RoundingStrategy::ToZero);
+
+        let spread_rounded = (spread_diff / Decimal::from_f64(2.0).unwrap())
+            .round_dp_with_strategy(digits, RoundingStrategy::ToZero);
+
+        let spread_rounded = spread_rounded.to_f64().unwrap();
+
+        let is_odd: bool = (spread_diff * Decimal::from_f64(factor).unwrap())
+            .to_i32()
+            .unwrap()
+            % 2
+            == 0;
+
+        if is_odd {
+            return (bid + spread_rounded, ask - spread_rounded);
+        } else {
+            return (bid + spread_rounded + pip, ask - spread_rounded);
+        }
+    }
+
+    return (bid, ask);
+}
+
+fn calculate_min_spread(bid: f64, ask: f64, min_spread: f64, digits: u32) -> (f64, f64) {
+    let spread = calculate_spread(bid, ask, digits);
+    let min_spread = Decimal::from_f64(min_spread).unwrap();
+    let factor = i64::pow(10, digits as u32) as f64;
+    let pip = 1.0 / factor;
+
+    if spread < min_spread {
+        let spread_diff =
+            (min_spread - spread).round_dp_with_strategy(digits, RoundingStrategy::ToZero);
+        let spread_rounded = (spread_diff / Decimal::from_f64(2.0).unwrap())
+            .round_dp_with_strategy(digits, RoundingStrategy::ToZero);
+
+        let spread_rounded = spread_rounded.to_f64().unwrap();
+        let is_odd: bool = (spread_diff * Decimal::from_f64(factor).unwrap())
+            .to_i32()
+            .unwrap()
+            % 2
+            == 0;
+
+        let spread_rounded = spread_rounded.to_f64().unwrap();
+        if is_odd {
+            return (bid - spread_rounded, ask + spread_rounded);
+        } else {
+            return (bid - spread_rounded + pip, ask + spread_rounded);
+        }
+    }
+    return (bid, ask);
+}
+
 fn apply_max_spread(bid_ask: &mut MicroEngineBidask, max_spread: f64, digits: u32) {
-    let spread = calculate_spread(bid_ask, digits);
+    let spread = calculate_spread(bid_ask.bid, bid_ask.ask, digits);
     let max_spread = Decimal::from_f64(max_spread).unwrap();
     let factor = i64::pow(10, digits as u32) as f64;
     let pip = 1.0 / factor;
@@ -134,7 +214,7 @@ fn apply_max_spread(bid_ask: &mut MicroEngineBidask, max_spread: f64, digits: u3
 }
 
 fn apply_min_spread(bid_ask: &mut MicroEngineBidask, min_spread: f64, digits: u32) {
-    let spread = calculate_spread(bid_ask, digits);
+    let spread = calculate_spread(bid_ask.bid, bid_ask.ask, digits);
     let min_spread = Decimal::from_f64(min_spread).unwrap();
     let factor = i64::pow(10, digits as u32) as f64;
     let pip = 1.0 / factor;
@@ -163,8 +243,8 @@ fn apply_min_spread(bid_ask: &mut MicroEngineBidask, min_spread: f64, digits: u3
     }
 }
 
-fn calculate_spread(bid_ask: &MicroEngineBidask, digits: u32) -> Decimal {
-    let bid = Decimal::from_f64(bid_ask.bid).unwrap();
-    let ask = Decimal::from_f64(bid_ask.ask).unwrap();
+fn calculate_spread(bid: f64, ask: f64, digits: u32) -> Decimal {
+    let bid = Decimal::from_f64(bid).unwrap();
+    let ask = Decimal::from_f64(ask).unwrap();
     (ask - bid).round_dp_with_strategy(digits, RoundingStrategy::ToZero)
 }

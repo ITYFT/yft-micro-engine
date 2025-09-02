@@ -1,13 +1,13 @@
-use std::collections::{HashMap, HashSet};
+use ahash::{AHashMap, AHashSet};
 
 use crate::positions::position::MicroEnginePosition;
 
 #[derive(Default, Clone, Debug)]
 pub struct PositionsCacheIndex {
-    pub trader_id_index: HashMap<String, HashSet<String>>,
-    pub account_id_index: HashMap<String, HashSet<String>>,
-    pub asset_pair_index: HashMap<String, HashSet<String>>,
-    pub profit_price_subscription_indexes: HashMap<String, HashSet<String>>,
+    pub trader_id_index: AHashMap<String, AHashSet<String>>,
+    pub account_id_index: AHashMap<String, AHashSet<String>>,
+    pub asset_pair_index: AHashMap<String, AHashSet<String>>,
+    pub profit_price_subscription_indexes: AHashMap<String, AHashSet<String>>,
 }
 
 impl PositionsCacheIndex {
@@ -57,7 +57,7 @@ impl PositionsCacheIndex {
         }
     }
 
-    fn remove_from_index(index: &mut HashMap<String, HashSet<String>>, key: &str, id: &str) {
+    fn remove_from_index(index: &mut AHashMap<String, AHashSet<String>>, key: &str, id: &str) {
         if let Some(set) = index.get_mut(key) {
             set.remove(id);
             if set.is_empty() {
@@ -84,7 +84,7 @@ mod profit_subscription_tests {
     }
 
     fn position_with_subscriptions(id: &str, subscriptions: &[&str]) -> MicroEnginePosition {
-        let subs: HashSet<String> = subscriptions.iter().map(|s| s.to_string()).collect();
+        let subs: Vec<String> = subscriptions.iter().map(|s| s.to_string()).collect();
 
         MicroEnginePosition {
             id: id.to_string(),
@@ -104,17 +104,17 @@ mod profit_subscription_tests {
             contract_size: 1.0,
             pl: 0.0,
             commission: 0.0,
-            swaps_sum: 0.0
+            swaps_sum: 0.0,
         }
     }
 
     #[test]
     fn test_add_profit_price_subscriptions() {
         let mut index = PositionsCacheIndex {
-            trader_id_index: HashMap::new(),
-            account_id_index: HashMap::new(),
-            asset_pair_index: HashMap::new(),
-            profit_price_subscription_indexes: HashMap::new(),
+            trader_id_index: AHashMap::new(),
+            account_id_index: AHashMap::new(),
+            asset_pair_index: AHashMap::new(),
+            profit_price_subscription_indexes: AHashMap::new(),
         };
 
         let position = position_with_subscriptions("pos1", &["BTCUSD", "ETHUSD"]);
@@ -136,10 +136,10 @@ mod profit_subscription_tests {
     #[test]
     fn test_remove_profit_price_subscriptions() {
         let mut index = PositionsCacheIndex {
-            trader_id_index: HashMap::new(),
-            account_id_index: HashMap::new(),
-            asset_pair_index: HashMap::new(),
-            profit_price_subscription_indexes: HashMap::new(),
+            trader_id_index: AHashMap::new(),
+            account_id_index: AHashMap::new(),
+            asset_pair_index: AHashMap::new(),
+            profit_price_subscription_indexes: AHashMap::new(),
         };
 
         let position = position_with_subscriptions("pos2", &["BTCUSD", "ETHUSD"]);

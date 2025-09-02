@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 
+use ahash::AHashSet;
 use cross_calculations::core::CrossCalculationsError;
 use tokio::sync::{Mutex, RwLock};
 
@@ -26,7 +27,7 @@ pub struct MicroEngine {
     positions_cache: RwLock<MicroEnginePositionCache>,
     settings_cache: RwLock<TradingSettingsCache>,
     pub bidask_cache: RwLock<MicroEngineBidAskCache>,
-    updated_assets: Mutex<HashSet<String>>,
+    updated_assets: Mutex<AHashSet<String>>,
 }
 impl MicroEngine {
     pub fn initialize(
@@ -46,18 +47,17 @@ impl MicroEngine {
                 settings_cache: RwLock::new(TradingSettingsCache::new(settings, &accounts_cache)),
                 accounts: RwLock::new(accounts_cache),
                 bidask_cache: RwLock::new(bidask_cache),
-                updated_assets: Mutex::new(HashSet::new()),
+                updated_assets: Mutex::new(AHashSet::new()),
             },
             bidask_errors,
         )
     }
 
-    pub async fn handle_new_price(&self, new_bidask: Vec<impl Into<MicroEngineBidask>>) {
+    pub async fn handle_new_price(&self, new_bidask: Vec<MicroEngineBidask>) {
         let mut updated_assets = self.updated_assets.lock().await;
         let mut price_cache = self.bidask_cache.write().await;
 
         for bidask in new_bidask {
-            let bidask: MicroEngineBidask = bidask.into();
             if !updated_assets.contains(&bidask.id) {
                 updated_assets.insert(bidask.id.clone());
             }
@@ -108,8 +108,7 @@ impl MicroEngine {
             .get_price_with_source(&position.quote, &position.collateral)
             .ok_or(MicroEngineError::ProfitPriceNotFond)?;
 
-        position.profit_price_assets_subscriptions =
-            HashSet::from_iter(sources.unwrap_or_default());
+        position.profit_price_assets_subscriptions = sources.unwrap_or_default();
 
         positions_cache.add_position(position.clone());
 
@@ -144,22 +143,21 @@ impl MicroEngine {
     pub async fn recalculate_accordint_to_updates(
         &self,
     ) -> (
-        Vec<MicroEngineAccountCalculationUpdate>,
-        Vec<MicroEnginePositionCalculationUpdate>,
+        Option<Vec<MicroEngineAccountCalculationUpdate>>,
+        Option<Vec<MicroEnginePositionCalculationUpdate>>,
     ) {
         // Lock `updated_assets` separately to ensure consistent lock ordering.
         // This matches `handle_new_price`, which locks `updated_assets` before
         // `bidask_cache`.
         let updated_prices: Vec<String> = {
             let mut updated_assets = self.updated_assets.lock().await;
+
+            if updated_assets.is_empty() {
+                return (None, None);
+            }
+
             updated_assets.drain().collect()
         };
-
-        // If there are no updates, we can return early without locking the
-        // remaining structures.
-        if updated_prices.is_empty() {
-            return (Vec::new(), Vec::new());
-        }
 
         let (mut accounts, mut positions_cache, settings_cache, bidask_cache) = tokio::join!(
             self.accounts.write(),
@@ -174,6 +172,10 @@ impl MicroEngine {
             &settings_cache,
         );
 
+        let Some(positions_update_result) = positions_update_result else {
+            return (None, None);
+        };
+
         let updated_accounts = positions_update_result
             .iter()
             .map(|x| x.account_id.as_str())
@@ -185,7 +187,7 @@ impl MicroEngine {
             updated_accounts.as_slice(),
         );
 
-        (accounts_update_result, positions_update_result)
+        (Some(accounts_update_result), Some(positions_update_result))
     }
 
     pub async fn query_account_cache(
@@ -316,7 +318,7 @@ mod tests {
             active_bidask: price.clone(),
             margin_bidask: price.clone(),
             profit_bidask: MicroEngineBidask::create_blank(),
-            profit_price_assets_subscriptions: HashSet::new(),
+            profit_price_assets_subscriptions: Vec::new(),
             swaps_sum: 0.0,
         }
     }
@@ -356,13 +358,14 @@ mod tests {
         engine.handle_new_price(vec![new_price]).await;
 
         let (acc_updates, pos_updates) = engine.recalculate_accordint_to_updates().await;
+        let (acc_updates, pos_updates) = (acc_updates.unwrap(), pos_updates.unwrap());
         assert_eq!(acc_updates.len(), 1);
         assert_eq!(pos_updates.len(), 1);
         assert_eq!(pos_updates[0].position_id, "POS1");
 
         // ensure updates cleared
         let (acc_updates2, pos_updates2) = engine.recalculate_accordint_to_updates().await;
-        assert!(acc_updates2.is_empty());
-        assert!(pos_updates2.is_empty());
+        assert!(acc_updates2.is_none());
+        assert!(pos_updates2.is_none());
     }
 }

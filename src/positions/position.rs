@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-
 use chrono::{DateTime, Utc};
 
 use crate::{
@@ -31,7 +29,7 @@ pub struct MicroEnginePosition {
     pub active_bidask: MicroEngineBidask,
     pub margin_bidask: MicroEngineBidask,
     pub profit_bidask: MicroEngineBidask,
-    pub profit_price_assets_subscriptions: HashSet<String>,
+    pub profit_price_assets_subscriptions: Vec<String>,
     pub swaps_sum: f64,
 }
 
@@ -46,18 +44,27 @@ impl MicroEnginePosition {
         bidask_cache: &MicroEngineBidAskCache,
         settings: &MicroEngineTradingGroupSettings,
     ) {
-        let mut new_bidask = bidask.clone();
         let Some(instrument_settings) = settings.instruments.get(&bidask.id) else {
             return;
         };
 
-        instrument_settings.mutate_bidask(&mut new_bidask);
+        let (new_bid, new_ask) = instrument_settings.calculate_bidask(bidask);
 
         if self.asset_pair == bidask.id {
-            self.active_bidask = bidask.clone();
+            self.active_bidask.bid = new_bid;
+            self.active_bidask.ask = new_ask;
         }
 
-        if self.profit_price_assets_subscriptions.contains(&bidask.id) {
+        let mut profit_hit = false;
+
+        for asset in &self.profit_price_assets_subscriptions {
+            if asset == &bidask.id {
+                profit_hit = true;
+                break;
+            }
+        }
+
+        if profit_hit {
             if let Some(profit_price) = bidask_cache.get_price(&self.quote, &self.collateral) {
                 self.profit_bidask = profit_price
             }

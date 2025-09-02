@@ -75,7 +75,7 @@ impl MicroEnginePositionCache {
     pub fn remove_position(&mut self, id: &str) -> Option<MicroEnginePosition> {
         let removed_position = self.positions.remove(id)?;
         self.indexes.remove_indexes(&removed_position);
-        
+
         Some(removed_position)
     }
 
@@ -84,8 +84,12 @@ impl MicroEnginePositionCache {
         updated_prices: &[String],
         bidask_cache: &MicroEngineBidAskCache,
         settings_cache: &TradingSettingsCache,
-    ) -> Vec<MicroEnginePositionCalculationUpdate> {
-        let mut updated_positions = vec![];
+    ) -> Option<Vec<MicroEnginePositionCalculationUpdate>> {
+        if updated_prices.is_empty() {
+            return None;
+        }
+
+        let mut updated_positions: Option<Vec<MicroEnginePositionCalculationUpdate>> = None;
         for price_id in updated_prices.into_iter() {
             let mut positions = vec![];
 
@@ -110,11 +114,13 @@ impl MicroEnginePositionCache {
 
                         position.update_bidask(target_price, bidask_cache, group_settings);
 
-                        updated_positions.push(MicroEnginePositionCalculationUpdate {
-                            account_id: position.account_id.clone(),
-                            position_id: position.id.clone(),
-                            gross_pl: position.get_gross_pl(),
-                        });
+                        updated_positions.get_or_insert_default().push(
+                            MicroEnginePositionCalculationUpdate {
+                                account_id: position.account_id.clone(),
+                                position_id: position.id.clone(),
+                                gross_pl: position.get_gross_pl(),
+                            },
+                        );
                     }
                 }
             }

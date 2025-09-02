@@ -1,5 +1,6 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
+use ahash::AHashMap;
 use cross_calculations::core::{
     CrossCalculationsCrossPairsMatrix, CrossCalculationsError, CrossCalculationsPriceSource,
     CrossCalculationsSourceInstrument,
@@ -11,9 +12,9 @@ pub mod dto;
 
 #[derive(Debug)]
 pub struct MicroEngineBidAskCache {
-    prices: HashMap<String, MicroEngineBidask>,
-    base_quote_index: HashMap<String, HashMap<String, String>>,
-    quote_base_index: HashMap<String, HashMap<String, String>>,
+    prices: AHashMap<String, MicroEngineBidask>,
+    base_quote_index: AHashMap<String, AHashMap<String, String>>,
+    quote_base_index: AHashMap<String, AHashMap<String, String>>,
     cross_matrix: CrossCalculationsCrossPairsMatrix,
 }
 
@@ -43,21 +44,21 @@ impl MicroEngineBidAskCache {
             &instruments.iter().collect::<Vec<_>>(),
         );
 
-        let mut prices = HashMap::with_capacity(instruments.len());
-        let mut base_quote_index = HashMap::new();
-        let mut quote_base_index = HashMap::new();
+        let mut prices = AHashMap::with_capacity(instruments.len());
+        let mut base_quote_index = AHashMap::new();
+        let mut quote_base_index = AHashMap::new();
 
         for bid_ask in cached_prices {
             prices.insert(bid_ask.id.clone(), bid_ask.clone());
 
             let base_quote = base_quote_index
                 .entry(bid_ask.base.clone())
-                .or_insert_with(|| HashMap::new());
+                .or_insert_with(|| AHashMap::new());
             base_quote.insert(bid_ask.quote.clone(), bid_ask.id.clone());
 
             let quote_base = quote_base_index
                 .entry(bid_ask.quote.clone())
-                .or_insert_with(|| HashMap::new());
+                .or_insert_with(|| AHashMap::new());
             quote_base.insert(bid_ask.base.clone(), bid_ask.id.clone());
         }
 
@@ -113,25 +114,40 @@ impl MicroEngineBidAskCache {
 
         result
     }
+    #[inline(always)]
     pub fn handle_new(&mut self, bid_ask: &MicroEngineBidask) {
-        let old_price = self.prices.insert(bid_ask.id.clone(), bid_ask.clone());
+        use std::collections::hash_map::Entry;
 
-        if old_price.is_none() {
-            let base_quote = self
-                .base_quote_index
-                .entry(bid_ask.base.clone())
-                .or_default();
-            base_quote.insert(bid_ask.quote.clone(), bid_ask.id.clone());
+        match self.prices.entry(bid_ask.id.clone()) {
+            Entry::Occupied(mut occ) => {
+                let existed_price = occ.get_mut();
 
-            let quote_base = self
-                .quote_base_index
-                .entry(bid_ask.quote.clone())
-                .or_default();
-            quote_base.insert(bid_ask.base.clone(), bid_ask.id.clone());
+                if existed_price.bid != bid_ask.bid {
+                    existed_price.bid = bid_ask.bid;
+                }
+                if existed_price.ask != bid_ask.ask {
+                    existed_price.ask = bid_ask.ask;
+                }
+            }
+            Entry::Vacant(vac) => {
+                vac.insert(bid_ask.clone());
+
+                let base_quote = self
+                    .base_quote_index
+                    .entry(bid_ask.base.clone())
+                    .or_default();
+                base_quote.insert(bid_ask.quote.clone(), bid_ask.id.clone());
+
+                let quote_base = self
+                    .quote_base_index
+                    .entry(bid_ask.quote.clone())
+                    .or_default();
+                quote_base.insert(bid_ask.base.clone(), bid_ask.id.clone());
+            }
         }
     }
 
-    pub fn get_all(&self) -> HashMap<String, MicroEngineBidask> {
+    pub fn get_all(&self) -> AHashMap<String, MicroEngineBidask> {
         self.prices.clone()
     }
 

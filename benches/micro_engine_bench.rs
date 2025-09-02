@@ -87,7 +87,7 @@ fn sample_position() -> MicroEnginePosition {
         active_bidask: price.clone(),
         margin_bidask: price.clone(),
         profit_bidask: MicroEngineBidask::create_blank(),
-        profit_price_assets_subscriptions: HashSet::new(),
+        profit_price_assets_subscriptions: Vec::new(),
         swaps_sum: 0.0,
     }
 }
@@ -136,7 +136,7 @@ fn gen_positions(n: usize) -> Vec<MicroEnginePosition> {
             active_bidask: px.clone(),
             margin_bidask: px.clone(),
             profit_bidask: MicroEngineBidask::create_blank(),
-            profit_price_assets_subscriptions: HashSet::new(),
+            profit_price_assets_subscriptions: Vec::new(),
             swaps_sum: 0.0,
         })
         .collect()

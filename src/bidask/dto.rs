@@ -29,18 +29,21 @@ impl CrossCalculationsBidAsk for MicroEngineBidask {
 }
 
 impl MicroEngineBidask {
+    #[inline(always)]
     pub fn get_bid_ask_with_markup(&self, markup_bid: f64, markup_ask: f64) -> (f64, f64) {
         let bid = self.bid + markup_bid;
         let ask = self.ask + markup_ask;
         (bid, ask)
     }
 
+    #[inline(always)]
     pub fn apply_markup(&mut self, markup_bid: f64, markup_ask: f64) {
         let (bid, ask) = self.get_bid_ask_with_markup(markup_bid, markup_ask);
         self.bid = bid;
         self.ask = ask;
     }
 
+    #[inline(always)]
     pub fn get_open_price(&self, is_buy: bool) -> f64 {
         match is_buy {
             true => self.ask,
@@ -48,6 +51,7 @@ impl MicroEngineBidask {
         }
     }
 
+    #[inline(always)]
     pub fn get_close_price(&self, is_buy: bool) -> f64 {
         match is_buy {
             true => self.bid,
@@ -55,6 +59,7 @@ impl MicroEngineBidask {
         }
     }
 
+    #[inline(always)]
     pub fn update_open_price(&mut self, is_buy: bool, price: f64) {
         match is_buy {
             true => self.ask = price,
@@ -62,6 +67,7 @@ impl MicroEngineBidask {
         };
     }
 
+    #[inline(always)]
     pub fn update_close_price(&mut self, is_buy: bool, price: f64) {
         match is_buy {
             true => self.bid = price,
@@ -69,6 +75,7 @@ impl MicroEngineBidask {
         };
     }
 
+    #[inline(always)]
     pub fn reverse(&self) -> Self {
         Self {
             id: format!("REVERSE-{}", self.id.clone()),
@@ -79,6 +86,7 @@ impl MicroEngineBidask {
         }
     }
 
+    #[inline(always)]
     pub fn create_blank() -> Self {
         Self {
             id: String::default(),
