@@ -98,6 +98,24 @@ impl MicroEngineAccountCache {
         updated_accounts_data
     }
 
+    pub(crate) fn recalculate_all_accounts(
+        &mut self,
+        settings: &TradingSettingsCache,
+        positions_cache: &MicroEnginePositionCache,
+    ) {
+        for (id, account) in self.accounts.iter_mut() {
+            let Some(account_settings) = settings.resolve_by_account(id) else {
+                continue;
+            };
+
+            let account_positions = positions_cache
+                .get_account_positions(id)
+                .unwrap_or_default();
+
+            account.recalculate_account_data(&account_positions, account_settings);
+        }
+    }
+
     pub(crate) fn insert_or_update_account(
         &mut self,
         account: MicroEngineAccount,

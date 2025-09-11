@@ -93,14 +93,17 @@ fn sample_position() -> MicroEnginePosition {
 }
 
 fn build_engine() -> Arc<MicroEngine> {
-    let (engine, _errors) = MicroEngine::initialize(
+
+    let rt = Builder::new_current_thread().enable_all().build().unwrap();
+
+    let (engine, _errors) = rt.block_on(MicroEngine::initialize(
         vec![sample_account()],
         Vec::<MicroEnginePosition>::new(),
         vec![sample_settings()],
         sample_collaterals(),
         vec![sample_instrument()],
         vec![sample_bidask()],
-    );
+    ));
     Arc::new(engine)
 }
 
@@ -143,16 +146,17 @@ fn gen_positions(n: usize) -> Vec<MicroEnginePosition> {
 }
 
 fn bench_initialize(c: &mut Criterion) {
+    let rt = Builder::new_current_thread().enable_all().build().unwrap();
     c.bench_function("initialize", |b| {
         b.iter(|| {
-            let (engine, errors) = MicroEngine::initialize(
+            let (engine, errors) = rt.block_on(MicroEngine::initialize(
                 vec![sample_account()],
                 Vec::<MicroEnginePosition>::new(),
                 vec![sample_settings()],
                 sample_collaterals(),
                 vec![sample_instrument()],
                 vec![sample_bidask()],
-            );
+            ));
             assert!(errors.is_empty());
             black_box(engine);
         });
@@ -212,14 +216,14 @@ fn bench_handle_new_price_heavy_state(c: &mut Criterion) {
     let rt = Builder::new_current_thread().enable_all().build().unwrap();
 
     let engine = {
-        let (e, _errors) = MicroEngine::initialize(
+        let (e, _errors) = rt.block_on(MicroEngine::initialize(
             vec![sample_account()],
             gen_positions(10_000),
             vec![sample_settings()],
             sample_collaterals(),
             vec![sample_instrument()],
             vec![sample_bidask()],
-        );
+        ));
         Arc::new(e)
     };
 

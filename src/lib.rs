@@ -19,6 +19,7 @@ use crate::{
 
 pub mod accounts;
 pub mod bidask;
+pub mod main_tests;
 pub mod positions;
 pub mod settings;
 
@@ -30,7 +31,7 @@ pub struct MicroEngine {
     updated_assets: Mutex<AHashSet<String>>,
 }
 impl MicroEngine {
-    pub fn initialize(
+    pub async fn initialize(
         accounts: Vec<impl Into<MicroEngineAccount>>,
         positions: Vec<impl Into<MicroEnginePosition>>,
         settings: Vec<impl Into<MicroEngineTradingGroupSettings>>,
@@ -41,16 +42,18 @@ impl MicroEngine {
         let accounts_cache = MicroEngineAccountCache::new(accounts);
         let (bidask_cache, bidask_errors) =
             MicroEngineBidAskCache::new(collaterals, instruments, cached_prices);
-        (
-            Self {
-                positions_cache: RwLock::new(MicroEnginePositionCache::new(&bidask_cache, positions)),
-                settings_cache: RwLock::new(TradingSettingsCache::new(settings, &accounts_cache)),
-                accounts: RwLock::new(accounts_cache),
-                bidask_cache: RwLock::new(bidask_cache),
-                updated_assets: Mutex::new(AHashSet::new()),
-            },
-            bidask_errors,
-        )
+
+        let cache = Self {
+            positions_cache: RwLock::new(MicroEnginePositionCache::new(&bidask_cache, positions)),
+            settings_cache: RwLock::new(TradingSettingsCache::new(settings, &accounts_cache)),
+            accounts: RwLock::new(accounts_cache),
+            bidask_cache: RwLock::new(bidask_cache),
+            updated_assets: Mutex::new(AHashSet::new()),
+        };
+
+        cache.recalculate_all().await;
+
+        (cache, bidask_errors)
     }
 
     pub async fn handle_new_price(&self, new_bidask: Vec<MicroEngineBidask>) {
@@ -190,6 +193,19 @@ impl MicroEngine {
         (Some(accounts_update_result), Some(positions_update_result))
     }
 
+    async fn recalculate_all(&self) {
+        let (mut accounts, mut positions_cache, settings_cache, bidask_cache) = tokio::join!(
+            self.accounts.write(),
+            self.positions_cache.write(),
+            self.settings_cache.read(),
+            self.bidask_cache.read(),
+        );
+
+        positions_cache.recalculate_all_positions(&bidask_cache, &settings_cache);
+
+        accounts.recalculate_all_accounts(&settings_cache, &positions_cache);
+    }
+
     pub async fn query_account_cache(
         &self,
         call: impl Fn(&MicroEngineAccountCache) -> Vec<MicroEngineAccount>,
@@ -219,6 +235,8 @@ pub enum MicroEngineError {
 
 #[cfg(test)]
 mod tests {
+    use tokio::runtime::Builder;
+
     use super::*;
     use crate::settings::TradingGroupInstrumentSettings;
     use std::collections::{HashMap, HashSet};
@@ -275,6 +293,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_initialize_and_query() {
+        let rt = Builder::new_current_thread().enable_all().build().unwrap();
+
         let account = sample_account();
         let settings = sample_settings();
         let instrument = sample_instrument();
@@ -282,14 +302,14 @@ mod tests {
 
         let collaterals = HashSet::from(["USD".to_string()]);
 
-        let (engine, errors) = MicroEngine::initialize(
+        let (engine, errors) = rt.block_on(MicroEngine::initialize(
             vec![account.clone()],
             Vec::<MicroEnginePosition>::new(),
             vec![settings],
             collaterals,
             vec![instrument],
             vec![bidask],
-        );
+        ));
         assert!(errors.is_empty());
 
         let accounts = engine
@@ -325,6 +345,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_price_update_and_recalc() {
+        let rt = Builder::new_current_thread().enable_all().build().unwrap();
+
         let account = sample_account();
         let settings = sample_settings();
         let instrument = sample_instrument();
@@ -332,14 +354,14 @@ mod tests {
 
         let collaterals = HashSet::from(["USD".to_string()]);
 
-        let (engine, errors) = MicroEngine::initialize(
+        let (engine, errors) = rt.block_on(MicroEngine::initialize(
             vec![account.clone()],
             Vec::<MicroEnginePosition>::new(),
             vec![settings],
             collaterals,
             vec![instrument],
             vec![bidask],
-        );
+        ));
         assert!(errors.is_empty());
 
         // insert a position

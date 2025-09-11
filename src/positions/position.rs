@@ -86,3 +86,102 @@ impl MicroEnginePosition {
         self.pl = diff * self.lots_amount * self.contract_size * profit_price;
     }
 }
+
+#[cfg(test)]
+mod test {
+    use std::collections::{HashMap, HashSet};
+
+    use crate::{
+        bidask::{MicroEngineBidAskCache, MicroEngineInstrument, dto::MicroEngineBidask},
+        positions::position::MicroEnginePosition,
+        settings::TradingGroupInstrumentSettings,
+    };
+
+    #[tokio::test]
+    pub async fn test_pl_calculation_base() {
+        let (bidask_cache, _) = MicroEngineBidAskCache::new(
+            HashSet::from_iter(vec!["USD".to_string()].into_iter()),
+            vec![MicroEngineInstrument {
+                id: "EURUSD".to_string(),
+                base: "EUR".to_string(),
+                quote: "USD".to_string(),
+            }],
+            vec![MicroEngineBidask {
+                id: "EURUSD".to_string(),
+                bid: 1.15173,
+                ask: 1.15173,
+                base: "EUR".to_string(),
+                quote: "USD".to_string(),
+            }],
+        );
+
+        let settings = crate::settings::MicroEngineTradingGroupSettings {
+            id: "tg1".to_string(),
+            instruments: HashMap::from_iter(
+                vec![(
+                    "EURUSD".to_string(),
+                    TradingGroupInstrumentSettings {
+                        digits: 5,
+                        max_leverage: None,
+                        markup_settings: None,
+                    },
+                )]
+                .into_iter(),
+            ),
+            hedge_coef: None,
+        };
+
+        let mut position = MicroEnginePosition {
+            id: "id".to_string(),
+            trader_id: "trader_id".to_string(),
+            account_id: "account_id".to_string(),
+            base: "EUR".to_string(),
+            quote: "USD".to_string(),
+            collateral: "USD".to_string(),
+            asset_pair: "EURUSD".to_string(),
+            lots_amount: 0.01,
+            contract_size: 100000.0,
+            is_buy: true,
+            pl: 0.0,
+            commission: 0.0,
+            open_bidask: MicroEngineBidask {
+                id: "EURUSD".to_string(),
+                bid: 1.05173,
+                ask: 1.05173,
+                base: "EUR".to_string(),
+                quote: "USD".to_string(),
+            },
+            active_bidask: MicroEngineBidask {
+                id: "EURUSD".to_string(),
+                bid: 1.05173,
+                ask: 1.05173,
+                base: "EUR".to_string(),
+                quote: "USD".to_string(),
+            },
+            margin_bidask: MicroEngineBidask {
+                id: "EURUSD".to_string(),
+                bid: 1.05173,
+                ask: 1.05173,
+                base: "EUR".to_string(),
+                quote: "USD".to_string(),
+            },
+            profit_bidask: MicroEngineBidask::create_blank(),
+            profit_price_assets_subscriptions: vec![],
+            swaps_sum: 0.0,
+        };
+
+        position.update_bidask(
+            &MicroEngineBidask {
+                id: "EURUSD".to_string(),
+                bid: 1.07113,
+                ask: 1.07113,
+                base: "EUR".to_string(),
+                quote: "USD".to_string(),
+            },
+            &bidask_cache,
+            &settings,
+        );
+
+        assert_eq!(format!("{:.5}", position.get_gross_pl()), "19.40000");
+    }
+}

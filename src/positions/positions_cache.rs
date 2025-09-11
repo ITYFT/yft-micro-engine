@@ -139,4 +139,23 @@ impl MicroEnginePositionCache {
         }
         updated_positions
     }
+
+    pub fn recalculate_all_positions(
+        &mut self,
+        bidask_cache: &MicroEngineBidAskCache,
+        settings_cache: &TradingSettingsCache,
+    ) {
+        for (id, position) in self.positions.iter_mut() {
+            let Some(group_settings) = settings_cache.resolve_by_account(&position.account_id)
+            else {
+                continue;
+            };
+
+            let Some(price) = bidask_cache.get_by_id(id) else {
+                continue;
+            };
+
+            position.update_bidask(price, bidask_cache, group_settings);
+        }
+    }
 }
