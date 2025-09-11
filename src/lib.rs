@@ -261,7 +261,7 @@ mod tests {
         }
     }
 
-        fn sample_settings_with_markup() -> MicroEngineTradingGroupSettings {
+    fn sample_settings_with_markup() -> MicroEngineTradingGroupSettings {
         let mut instruments = HashMap::new();
         instruments.insert(
             "EURUSD".to_string(),

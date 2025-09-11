@@ -13,6 +13,7 @@ pub struct MicroEngineAccountCalculationUpdate {
     pub free_margin: f64,
     pub margin_level: f64,
     pub total_gross: f64,
+    pub balance: f64,
 }
 
 #[derive(Debug, Clone)]
@@ -52,6 +53,7 @@ impl MicroEngineAccount {
             free_margin: self.free_margin,
             margin_level: self.margin_level,
             total_gross: gross_pl,
+            balance: self.balance,
         }
     }
 
@@ -118,14 +120,12 @@ fn calculate_specific_instrument_margin_and_gross_pl(
         let margin_price = position.margin_bidask.get_open_price(position.is_buy);
         match position.is_buy {
             true => {
-                buy_margin_price_sum +=
-                    margin_price * position.lots_amount;
+                buy_margin_price_sum += margin_price * position.lots_amount;
                 buy_volume += position.lots_amount;
                 contract_size_sum += position.contract_size;
             }
             false => {
-                sell_margin_price_sum +=
-                    margin_price * position.lots_amount;
+                sell_margin_price_sum += margin_price * position.lots_amount;
                 sell_volume += position.lots_amount;
                 contract_size_sum += position.contract_size;
             }
