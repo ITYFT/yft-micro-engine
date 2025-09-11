@@ -149,9 +149,6 @@ impl MicroEngine {
         Option<Vec<MicroEngineAccountCalculationUpdate>>,
         Option<Vec<MicroEnginePositionCalculationUpdate>>,
     ) {
-        // Lock `updated_assets` separately to ensure consistent lock ordering.
-        // This matches `handle_new_price`, which locks `updated_assets` before
-        // `bidask_cache`.
         let updated_prices: Vec<String> = {
             let mut updated_assets = self.updated_assets.lock().await;
 
@@ -238,7 +235,7 @@ mod tests {
     use tokio::runtime::Builder;
 
     use super::*;
-    use crate::settings::TradingGroupInstrumentSettings;
+    use crate::settings::{TradingGroupInstrumentMarkupSettings, TradingGroupInstrumentSettings};
     use std::collections::{HashMap, HashSet};
 
     fn sample_settings() -> MicroEngineTradingGroupSettings {
@@ -248,12 +245,40 @@ mod tests {
             TradingGroupInstrumentSettings {
                 digits: 5,
                 max_leverage: None,
-                markup_settings: None,
+                markup_settings: Some(TradingGroupInstrumentMarkupSettings {
+                    markup_bid: 0.0,
+                    markup_ask: 0.0,
+                    min_spread: Some(0.00020),
+                    max_spread: None,
+                }),
             },
         );
 
         MicroEngineTradingGroupSettings {
-            id: "G1".to_string(),
+            id: "tg1".to_string(),
+            hedge_coef: None,
+            instruments,
+        }
+    }
+
+        fn sample_settings_with_markup() -> MicroEngineTradingGroupSettings {
+        let mut instruments = HashMap::new();
+        instruments.insert(
+            "EURUSD".to_string(),
+            TradingGroupInstrumentSettings {
+                digits: 5,
+                max_leverage: None,
+                markup_settings: Some(TradingGroupInstrumentMarkupSettings {
+                    markup_bid: -300.0 * 0.00001,
+                    markup_ask: 500.0 * 0.00001,
+                    min_spread: None,
+                    max_spread: None,
+                }),
+            },
+        );
+
+        MicroEngineTradingGroupSettings {
+            id: "tg1".to_string(),
             hedge_coef: None,
             instruments,
         }
@@ -263,8 +288,8 @@ mod tests {
         MicroEngineAccount {
             id: "ACC1".to_string(),
             trader_id: "TR1".to_string(),
-            trading_group: "G1".to_string(),
-            balance: 1000.0,
+            trading_group: "tg1".to_string(),
+            balance: 100000.0,
             leverage: 100.0,
             margin: 0.0,
             equity: 0.0,
@@ -292,102 +317,251 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_initialize_and_query() {
-        let rt = Builder::new_current_thread().enable_all().build().unwrap();
-
+    async fn test_recalculations_with_min_spread() {
         let account = sample_account();
         let settings = sample_settings();
         let instrument = sample_instrument();
-        let bidask = sample_bidask();
 
         let collaterals = HashSet::from(["USD".to_string()]);
 
-        let (engine, errors) = rt.block_on(MicroEngine::initialize(
+        let (engine, errors) = MicroEngine::initialize(
             vec![account.clone()],
-            Vec::<MicroEnginePosition>::new(),
+            vec![MicroEnginePosition {
+                id: "id".to_string(),
+                trader_id: "TR1".to_string(),
+                account_id: "ACC1".to_string(),
+                base: "EUR".to_string(),
+                quote: "USD".to_string(),
+                collateral: "USD".to_string(),
+                asset_pair: "EURUSD".to_string(),
+                lots_amount: 0.05,
+                contract_size: 100000.0,
+                is_buy: true,
+                pl: 0.0,
+                commission: 0.05,
+                open_bidask: MicroEngineBidask {
+                    id: "EURUSD".to_string(),
+                    bid: 1.25540,
+                    ask: 1.25542,
+                    base: "EUR".to_string(),
+                    quote: "USD".to_string(),
+                },
+                active_bidask: MicroEngineBidask {
+                    id: "EURUSD".to_string(),
+                    bid: 1.25540,
+                    ask: 1.25542,
+                    base: "EUR".to_string(),
+                    quote: "USD".to_string(),
+                },
+                margin_bidask: MicroEngineBidask {
+                    id: "EURUSD".to_string(),
+                    bid: 1.25540,
+                    ask: 1.25542,
+                    base: "EUR".to_string(),
+                    quote: "USD".to_string(),
+                },
+                profit_bidask: MicroEngineBidask::create_blank(),
+                profit_price_assets_subscriptions: vec![],
+                swaps_sum: 0.0,
+            }],
             vec![settings],
             collaterals,
             vec![instrument],
-            vec![bidask],
-        ));
-        assert!(errors.is_empty());
+            vec![MicroEngineBidask {
+                id: "EURUSD".to_string(),
+                bid: 1.25540,
+                ask: 1.25542,
+                base: "EUR".to_string(),
+                quote: "USD".to_string(),
+            }],
+        )
+        .await;
 
-        let accounts = engine
-            .query_account_cache(|cache| cache.get_all_accounts().into_iter().cloned().collect())
+        engine
+            .handle_new_price(vec![MicroEngineBidask {
+                id: "EURUSD".to_string(),
+                bid: 1.25540,
+                ask: 1.25542,
+                base: "EUR".to_string(),
+                quote: "USD".to_string(),
+            }])
             .await;
-        assert_eq!(accounts.len(), 1);
-        assert_eq!(accounts[0].id, account.id);
-    }
 
-    fn sample_position() -> MicroEnginePosition {
-        let price = sample_bidask();
-        MicroEnginePosition {
-            id: "POS1".to_string(),
-            trader_id: "TR1".to_string(),
-            account_id: "ACC1".to_string(),
-            base: "EUR".to_string(),
-            quote: "USD".to_string(),
-            collateral: "USD".to_string(),
-            asset_pair: "EURUSD".to_string(),
-            lots_amount: 1.0,
-            contract_size: 1.0,
-            is_buy: true,
-            pl: 0.0,
-            commission: 0.0,
-            open_bidask: price.clone(),
-            active_bidask: price.clone(),
-            margin_bidask: price.clone(),
-            profit_bidask: MicroEngineBidask::create_blank(),
-            profit_price_assets_subscriptions: Vec::new(),
-            swaps_sum: 0.0,
-        }
+        let (account_update, _) = engine.recalculate_accordint_to_updates().await;
+
+        let account_update = account_update.unwrap().first().cloned().unwrap();
+
+        assert_eq!(format!("{:.5}", account_update.total_gross), "-0.60000");
+        assert_eq!(format!("{:.5}", account_update.margin), "62.77100");
+        assert_eq!(format!("{:.5}", account_update.equity), "99999.40000");
+        assert_eq!(format!("{:.5}", account_update.free_margin), "99936.62900");
+
+        assert!(errors.is_empty());
     }
 
     #[tokio::test]
-    async fn test_price_update_and_recalc() {
-        let rt = Builder::new_current_thread().enable_all().build().unwrap();
-
+    async fn test_recalculations_with_min_spread2() {
         let account = sample_account();
         let settings = sample_settings();
         let instrument = sample_instrument();
-        let bidask = sample_bidask();
 
         let collaterals = HashSet::from(["USD".to_string()]);
 
-        let (engine, errors) = rt.block_on(MicroEngine::initialize(
+        let (engine, errors) = MicroEngine::initialize(
             vec![account.clone()],
-            Vec::<MicroEnginePosition>::new(),
+            vec![MicroEnginePosition {
+                id: "id".to_string(),
+                trader_id: "TR1".to_string(),
+                account_id: "ACC1".to_string(),
+                base: "EUR".to_string(),
+                quote: "USD".to_string(),
+                collateral: "USD".to_string(),
+                asset_pair: "EURUSD".to_string(),
+                lots_amount: 0.01,
+                contract_size: 100000.0,
+                is_buy: false,
+                pl: 0.0,
+                commission: 0.0,
+                open_bidask: MicroEngineBidask {
+                    id: "EURUSD".to_string(),
+                    bid: 1.25540,
+                    ask: 1.25542,
+                    base: "EUR".to_string(),
+                    quote: "USD".to_string(),
+                },
+                active_bidask: MicroEngineBidask {
+                    id: "EURUSD".to_string(),
+                    bid: 1.25540,
+                    ask: 1.25542,
+                    base: "EUR".to_string(),
+                    quote: "USD".to_string(),
+                },
+                margin_bidask: MicroEngineBidask {
+                    id: "EURUSD".to_string(),
+                    bid: 1.25540,
+                    ask: 1.25542,
+                    base: "EUR".to_string(),
+                    quote: "USD".to_string(),
+                },
+                profit_bidask: MicroEngineBidask::create_blank(),
+                profit_price_assets_subscriptions: vec![],
+                swaps_sum: 0.0,
+            }],
             vec![settings],
             collaterals,
             vec![instrument],
-            vec![bidask],
-        ));
+            vec![MicroEngineBidask {
+                id: "EURUSD".to_string(),
+                bid: 1.25540,
+                ask: 1.25542,
+                base: "EUR".to_string(),
+                quote: "USD".to_string(),
+            }],
+        )
+        .await;
+
+        engine
+            .handle_new_price(vec![MicroEngineBidask {
+                id: "EURUSD".to_string(),
+                bid: 1.25540,
+                ask: 1.25542,
+                base: "EUR".to_string(),
+                quote: "USD".to_string(),
+            }])
+            .await;
+
+        let (account_update, _) = engine.recalculate_accordint_to_updates().await;
+
+        let account_update = account_update.unwrap().first().cloned().unwrap();
+
+        assert_eq!(format!("{:.5}", account_update.total_gross), "-0.11000");
+        assert_eq!(format!("{:.5}", account_update.margin), "12.55400");
+        assert_eq!(format!("{:.5}", account_update.equity), "99999.89000");
+        assert_eq!(format!("{:.5}", account_update.free_margin), "99987.33600");
+
         assert!(errors.is_empty());
+    }
 
-        // insert a position
-        let position = sample_position();
-        let insert_res = engine.insert_or_update_position(position).await;
-        assert!(insert_res.is_ok());
+    #[tokio::test]
+    async fn test_recalculations_with_markup() {
+        let account = sample_account();
+        let settings = sample_settings_with_markup();
+        let instrument = sample_instrument();
 
-        // update price
-        let new_price = MicroEngineBidask {
-            id: "EURUSD".to_string(),
-            bid: 1.2,
-            ask: 1.3,
-            base: "EUR".to_string(),
-            quote: "USD".to_string(),
-        };
-        engine.handle_new_price(vec![new_price]).await;
+        let collaterals = HashSet::from(["USD".to_string()]);
 
-        let (acc_updates, pos_updates) = engine.recalculate_accordint_to_updates().await;
-        let (acc_updates, pos_updates) = (acc_updates.unwrap(), pos_updates.unwrap());
-        assert_eq!(acc_updates.len(), 1);
-        assert_eq!(pos_updates.len(), 1);
-        assert_eq!(pos_updates[0].position_id, "POS1");
+        let (engine, errors) = MicroEngine::initialize(
+            vec![account.clone()],
+            vec![MicroEnginePosition {
+                id: "id".to_string(),
+                trader_id: "TR1".to_string(),
+                account_id: "ACC1".to_string(),
+                base: "EUR".to_string(),
+                quote: "USD".to_string(),
+                collateral: "USD".to_string(),
+                asset_pair: "EURUSD".to_string(),
+                lots_amount: 0.05,
+                contract_size: 100000.0,
+                is_buy: true,
+                pl: 0.0,
+                commission: 0.05,
+                open_bidask: MicroEngineBidask {
+                    id: "EURUSD".to_string(),
+                    bid: 1.25540,
+                    ask: 1.25542,
+                    base: "EUR".to_string(),
+                    quote: "USD".to_string(),
+                },
+                active_bidask: MicroEngineBidask {
+                    id: "EURUSD".to_string(),
+                    bid: 1.25540,
+                    ask: 1.25542,
+                    base: "EUR".to_string(),
+                    quote: "USD".to_string(),
+                },
+                margin_bidask: MicroEngineBidask {
+                    id: "EURUSD".to_string(),
+                    bid: 1.25540,
+                    ask: 1.25542,
+                    base: "EUR".to_string(),
+                    quote: "USD".to_string(),
+                },
+                profit_bidask: MicroEngineBidask::create_blank(),
+                profit_price_assets_subscriptions: vec![],
+                swaps_sum: 0.0,
+            }],
+            vec![settings],
+            collaterals,
+            vec![instrument],
+            vec![MicroEngineBidask {
+                id: "EURUSD".to_string(),
+                bid: 1.25540,
+                ask: 1.25542,
+                base: "EUR".to_string(),
+                quote: "USD".to_string(),
+            }],
+        )
+        .await;
 
-        // ensure updates cleared
-        let (acc_updates2, pos_updates2) = engine.recalculate_accordint_to_updates().await;
-        assert!(acc_updates2.is_none());
-        assert!(pos_updates2.is_none());
+        engine
+            .handle_new_price(vec![MicroEngineBidask {
+                id: "EURUSD".to_string(),
+                bid: 1.25540,
+                ask: 1.25542,
+                base: "EUR".to_string(),
+                quote: "USD".to_string(),
+            }])
+            .await;
+
+        let (account_update, _) = engine.recalculate_accordint_to_updates().await;
+
+        let account_update = account_update.unwrap().first().cloned().unwrap();
+
+        assert_eq!(format!("{:.5}", account_update.total_gross), "-15.15000");
+        assert_eq!(format!("{:.5}", account_update.margin), "62.77100");
+        assert_eq!(format!("{:.5}", account_update.equity), "99984.85000");
+        assert_eq!(format!("{:.5}", account_update.free_margin), "99922.07900");
+
+        assert!(errors.is_empty());
     }
 }

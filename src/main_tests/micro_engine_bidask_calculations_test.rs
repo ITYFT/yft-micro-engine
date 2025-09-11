@@ -116,7 +116,7 @@ mod tests {
         engine.handle_new_price(vec![new_price]).await;
         let (acc_updates, pos_updates) = engine.recalculate_accordint_to_updates().await;
         let (acc_updates, pos_updates) = (acc_updates.unwrap(), pos_updates.unwrap());
-        println!("Account updates: {:?}, {:?}", acc_updates, pos_updates);
+
         assert_eq!(acc_updates.len(), 1);
         assert_eq!(pos_updates.len(), 1);
         assert_eq!(pos_updates[0].position_id, "POS1");

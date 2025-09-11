@@ -13,6 +13,7 @@ pub struct MicroEnginePositionCalculationUpdate {
     pub gross_pl: f64,
 }
 
+#[derive(Debug, Clone)]
 pub struct MicroEnginePositionCache {
     indexes: PositionsCacheIndex,
     positions: HashMap<String, MicroEnginePosition>,

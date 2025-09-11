@@ -128,6 +128,9 @@ fn calculate_max_spread(bid: f64, ask: f64, max_spread: f64, digits: u32) -> (f6
     let factor = i64::pow(10, digits as u32) as f64;
     let pip = 1.0 / factor;
 
+    let mut bid = bid;
+    let mut ask = ask;
+
     if spread > max_spread {
         let spread_diff =
             (spread - max_spread).round_dp_with_strategy(digits, RoundingStrategy::ToZero);
@@ -144,9 +147,11 @@ fn calculate_max_spread(bid: f64, ask: f64, max_spread: f64, digits: u32) -> (f6
             == 0;
 
         if is_odd {
-            return (bid + spread_rounded, ask - spread_rounded);
+            bid += spread_rounded;
+            ask -= spread_rounded;
         } else {
-            return (bid + spread_rounded + pip, ask - spread_rounded);
+            bid += spread_rounded + pip;
+            ask -= spread_rounded;
         }
     }
 
@@ -158,6 +163,9 @@ fn calculate_min_spread(bid: f64, ask: f64, min_spread: f64, digits: u32) -> (f6
     let min_spread = Decimal::from_f64(min_spread).unwrap();
     let factor = i64::pow(10, digits as u32) as f64;
     let pip = 1.0 / factor;
+
+    let mut bid = bid;
+    let mut ask = ask;
 
     if spread < min_spread {
         let spread_diff =
@@ -174,9 +182,11 @@ fn calculate_min_spread(bid: f64, ask: f64, min_spread: f64, digits: u32) -> (f6
 
         let spread_rounded = spread_rounded.to_f64().unwrap();
         if is_odd {
-            return (bid - spread_rounded, ask + spread_rounded);
+            bid -= spread_rounded;
+            ask += spread_rounded;
         } else {
-            return (bid - spread_rounded + pip, ask + spread_rounded);
+            bid -= spread_rounded + pip;
+            ask += spread_rounded;
         }
     }
     return (bid, ask);
@@ -247,4 +257,362 @@ fn calculate_spread(bid: f64, ask: f64, digits: u32) -> Decimal {
     let bid = Decimal::from_f64(bid).unwrap();
     let ask = Decimal::from_f64(ask).unwrap();
     (ask - bid).round_dp_with_strategy(digits, RoundingStrategy::ToZero)
+}
+
+#[cfg(test)]
+mod tests {
+    use chrono::Utc;
+
+    use super::*;
+
+    #[test]
+    fn test_apply_max_spread() {
+        let mut bid_ask = MicroEngineBidask {
+            id: "EURUSD".to_string(),
+            bid: 1.23414,
+            ask: 1.23434,
+            base: "".to_string(),
+            quote: "".to_string(),
+        };
+
+        apply_max_spread(&mut bid_ask, 0.00010, 5);
+
+        assert_eq!(format!("{:.5}", bid_ask.bid), "1.23419");
+        assert_eq!(format!("{:.5}", bid_ask.ask), "1.23429");
+    }
+
+    #[test]
+    fn test_calculate_max_spread() {
+        let bid_ask = MicroEngineBidask {
+            id: "EURUSD".to_string(),
+            bid: 1.23414,
+            ask: 1.23434,
+            base: "".to_string(),
+            quote: "".to_string(),
+        };
+
+        let (bid, ask) = calculate_max_spread(bid_ask.bid, bid_ask.ask, 0.00010, 5);
+
+        assert_eq!(format!("{:.5}", bid), "1.23419");
+        assert_eq!(format!("{:.5}", ask), "1.23429");
+    }
+
+    #[test]
+    fn test_apply_max_spread_below_zero() {
+        let mut bid_ask = MicroEngineBidask {
+            id: "EURUSD".to_string(),
+            bid: 1.23434,
+            ask: 1.23414,
+            base: "".to_string(),
+            quote: "".to_string(),
+        };
+
+        apply_max_spread(&mut bid_ask, 0.00010, 5);
+
+        assert_eq!(format!("{:.5}", bid_ask.bid), "1.23434");
+        assert_eq!(format!("{:.5}", bid_ask.ask), "1.23414");
+    }
+
+    #[test]
+    fn test_calculate_max_spread_below_zero() {
+        let bid_ask = MicroEngineBidask {
+            id: "EURUSD".to_string(),
+            bid: 1.23434,
+            ask: 1.23414,
+            base: "".to_string(),
+            quote: "".to_string(),
+        };
+
+        let (bid, ask) = calculate_max_spread(bid_ask.bid, bid_ask.ask, 0.00010, 5);
+
+        assert_eq!(format!("{:.5}", bid), "1.23434");
+        assert_eq!(format!("{:.5}", ask), "1.23414");
+    }
+
+    #[test]
+    fn test_apply_min_spread_below_zero() {
+        let mut bid_ask = MicroEngineBidask {
+            id: "EURUSD".to_string(),
+            bid: 1.23434,
+            ask: 1.23414,
+            base: "".to_string(),
+            quote: "".to_string(),
+        };
+
+        apply_min_spread(&mut bid_ask, 0.00010, 5);
+
+        assert_eq!(format!("{:.5}", bid_ask.bid), "1.23419");
+        assert_eq!(format!("{:.5}", bid_ask.ask), "1.23429");
+    }
+
+    #[test]
+    fn test_calculate_min_spread_below_zero() {
+        let bid_ask = MicroEngineBidask {
+            id: "EURUSD".to_string(),
+            bid: 1.23434,
+            ask: 1.23414,
+            base: "".to_string(),
+            quote: "".to_string(),
+        };
+
+        let (bid, ask) = calculate_min_spread(bid_ask.bid, bid_ask.ask, 0.00010, 5);
+
+        assert_eq!(format!("{:.5}", bid), "1.23419");
+        assert_eq!(format!("{:.5}", ask), "1.23429");
+    }
+
+    #[test]
+    fn test_apply_max_spread2() {
+        let mut bid_ask = MicroEngineBidask {
+            id: "EURUSD".to_string(),
+            bid: 1.23413,
+            ask: 1.23434,
+            base: "".to_string(),
+            quote: "".to_string(),
+        };
+
+        apply_max_spread(&mut bid_ask, 0.00010, 5);
+
+        assert_eq!(format!("{:.5}", bid_ask.bid), "1.23419");
+        assert_eq!(format!("{:.5}", bid_ask.ask), "1.23429");
+    }
+
+    #[test]
+    fn test_calculate_max_spread2() {
+        let bid_ask = MicroEngineBidask {
+            id: "EURUSD".to_string(),
+            bid: 1.23413,
+            ask: 1.23434,
+            base: "".to_string(),
+            quote: "".to_string(),
+        };
+
+        let (bid, ask) = calculate_max_spread(bid_ask.bid, bid_ask.ask, 0.00010, 5);
+
+        assert_eq!(format!("{:.5}", bid), "1.23419");
+        assert_eq!(format!("{:.5}", ask), "1.23429");
+    }
+
+    #[test]
+    fn test_apply_min_spread() {
+        let mut bid_ask = MicroEngineBidask {
+            id: "EURUSD".to_string(),
+            bid: 1.23434,
+            ask: 1.23435,
+            base: "".to_string(),
+            quote: "".to_string(),
+        };
+
+        apply_min_spread(&mut bid_ask, 0.00010, 5);
+
+        assert_eq!(format!("{:.5}", bid_ask.bid), "1.23429");
+        assert_eq!(format!("{:.5}", bid_ask.ask), "1.23439");
+    }
+
+    #[test]
+    fn test_calculate_min_spread() {
+        let bid_ask = MicroEngineBidask {
+            id: "EURUSD".to_string(),
+            bid: 1.23434,
+            ask: 1.23435,
+            base: "".to_string(),
+            quote: "".to_string(),
+        };
+
+        let (bid, ask) = calculate_min_spread(bid_ask.bid, bid_ask.ask, 0.00010, 5);
+
+        assert_eq!(format!("{:.5}", bid), "1.23429");
+        assert_eq!(format!("{:.5}", ask), "1.23439");
+    }
+
+    #[test]
+    fn test_apply_min_spread2() {
+        let mut bid_ask = MicroEngineBidask {
+            id: "EURUSD".to_string(),
+            bid: 1.23434,
+            ask: 1.23437,
+            base: "".to_string(),
+            quote: "".to_string(),
+        };
+
+        apply_min_spread(&mut bid_ask, 0.00010, 5);
+
+        assert_eq!(format!("{:.5}", bid_ask.bid), "1.23430");
+        assert_eq!(format!("{:.5}", bid_ask.ask), "1.23440");
+    }
+
+    #[test]
+    fn test_calculate_min_spread2() {
+        let bid_ask = MicroEngineBidask {
+            id: "EURUSD".to_string(),
+            bid: 1.23434,
+            ask: 1.23437,
+            base: "".to_string(),
+            quote: "".to_string(),
+        };
+
+        let (bid, ask) = calculate_min_spread(bid_ask.bid, bid_ask.ask, 0.00010, 5);
+
+        assert_eq!(format!("{:.5}", bid), "1.23430");
+        assert_eq!(format!("{:.5}", ask), "1.23440");
+    }
+
+    #[test]
+    fn test_max_zero() {
+        let mut bid_ask = MicroEngineBidask {
+            id: "EURUSD".to_string(),
+            bid: 1.23434,
+            ask: 1.23436,
+            base: "".to_string(),
+            quote: "".to_string(),
+        };
+
+        apply_max_spread(&mut bid_ask, 0.0, 5);
+
+        assert_eq!(format!("{:.5}", bid_ask.bid), "1.23435");
+        assert_eq!(format!("{:.5}", bid_ask.ask), "1.23435");
+    }
+
+    #[test]
+    fn test_calculate_max_zero() {
+        let bid_ask = MicroEngineBidask {
+            id: "EURUSD".to_string(),
+            bid: 1.23434,
+            ask: 1.23436,
+            base: "".to_string(),
+            quote: "".to_string(),
+        };
+
+        let (bid, ask) = calculate_max_spread(bid_ask.bid, bid_ask.ask, 0.0, 5);
+
+        assert_eq!(format!("{:.5}", bid), "1.23435");
+        assert_eq!(format!("{:.5}", ask), "1.23435");
+    }
+
+    #[test]
+    fn test_max_zero2() {
+        let mut bid_ask = MicroEngineBidask {
+            id: "EURUSD".to_string(),
+            bid: 1.23434,
+            ask: 1.23437,
+            base: "".to_string(),
+            quote: "".to_string(),
+        };
+
+        apply_max_spread(&mut bid_ask, 0.0, 5);
+
+        assert_eq!(format!("{:.5}", bid_ask.bid), "1.23436");
+        assert_eq!(format!("{:.5}", bid_ask.ask), "1.23436");
+    }
+
+    #[test]
+    fn test_calculate_max_zero2() {
+        let bid_ask = MicroEngineBidask {
+            id: "EURUSD".to_string(),
+            bid: 1.23434,
+            ask: 1.23437,
+            base: "".to_string(),
+            quote: "".to_string(),
+        };
+
+        let (bid, ask) = calculate_max_spread(bid_ask.bid, bid_ask.ask, 0.0, 5);
+
+        assert_eq!(format!("{:.5}", bid), "1.23436");
+        assert_eq!(format!("{:.5}", ask), "1.23436");
+    }
+
+    #[test]
+    fn test_case_qa1() {
+        let mut bid_ask = MicroEngineBidask {
+            id: "EURUSD".to_string(),
+            bid: 1.10155,
+            ask: 1.10255,
+            base: "".to_string(),
+            quote: "".to_string(),
+        };
+
+        apply_max_spread(&mut bid_ask, 0.00013, 5);
+
+        assert_eq!(format!("{:.5}", bid_ask.bid), "1.10199");
+        assert_eq!(format!("{:.5}", bid_ask.ask), "1.10212");
+    }
+
+    #[test]
+    fn test_calculate_case_qa1() {
+        let bid_ask = MicroEngineBidask {
+            id: "EURUSD".to_string(),
+            bid: 1.10155,
+            ask: 1.10255,
+            base: "".to_string(),
+            quote: "".to_string(),
+        };
+
+        let (bid, ask) = calculate_max_spread(bid_ask.bid, bid_ask.ask, 0.00013, 5);
+
+        assert_eq!(format!("{:.5}", bid), "1.10199");
+        assert_eq!(format!("{:.5}", ask), "1.10212");
+    }
+
+    #[test]
+    fn test_case_qa2() {
+        let mut bid_ask = MicroEngineBidask {
+            id: "EURUSD".to_string(),
+            bid: 1.10155,
+            ask: 1.10156,
+            base: "".to_string(),
+            quote: "".to_string(),
+        };
+
+        apply_min_spread(&mut bid_ask, 0.00011, 5);
+
+        assert_eq!(format!("{:.5}", bid_ask.bid), "1.10150");
+        assert_eq!(format!("{:.5}", bid_ask.ask), "1.10161");
+    }
+
+    #[test]
+    fn test_calculate_case_qa2() {
+        let bid_ask = MicroEngineBidask {
+            id: "EURUSD".to_string(),
+            bid: 1.10155,
+            ask: 1.10156,
+            base: "".to_string(),
+            quote: "".to_string(),
+        };
+
+        let (bid, ask) = calculate_min_spread(bid_ask.bid, bid_ask.ask, 0.00011, 5);
+
+        assert_eq!(format!("{:.5}", bid), "1.10150");
+        assert_eq!(format!("{:.5}", ask), "1.10161");
+    }
+
+    #[test]
+    fn test_case_qa3() {
+        let mut bid_ask = MicroEngineBidask {
+            id: "EURUSD".to_string(),
+            bid: 1.10155,
+            ask: 1.10157,
+            base: "".to_string(),
+            quote: "".to_string(),
+        };
+        apply_min_spread(&mut bid_ask, 0.00011, 5);
+
+        assert_eq!(format!("{:.5}", bid_ask.bid), "1.10150");
+        assert_eq!(format!("{:.5}", bid_ask.ask), "1.10161");
+    }
+
+    #[test]
+    fn test_calculate_case_qa3() {
+        let bid_ask = MicroEngineBidask {
+            id: "EURUSD".to_string(),
+            bid: 1.10155,
+            ask: 1.10157,
+            base: "".to_string(),
+            quote: "".to_string(),
+        };
+
+        let (bid, ask) = calculate_min_spread(bid_ask.bid, bid_ask.ask, 0.00011, 5);
+
+        assert_eq!(format!("{:.5}", bid), "1.10150");
+        assert_eq!(format!("{:.5}", ask), "1.10161");
+    }
 }

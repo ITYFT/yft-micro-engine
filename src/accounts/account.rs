@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::{
     positions::position::MicroEnginePosition,
-    settings::{TradingGroupInstrumentSettings, MicroEngineTradingGroupSettings},
+    settings::{MicroEngineTradingGroupSettings, TradingGroupInstrumentSettings},
 };
 
 #[derive(Debug, Clone)]
@@ -51,7 +51,7 @@ impl MicroEngineAccount {
             equity: self.equity,
             free_margin: self.free_margin,
             margin_level: self.margin_level,
-            total_gross: gross_pl
+            total_gross: gross_pl,
         }
     }
 
@@ -115,16 +115,17 @@ fn calculate_specific_instrument_margin_and_gross_pl(
 
     for position in positions {
         total_gross_pl += position.get_gross_pl();
+        let margin_price = position.margin_bidask.get_open_price(position.is_buy);
         match position.is_buy {
             true => {
                 buy_margin_price_sum +=
-                    position.margin_bidask.get_open_price(position.is_buy) * position.lots_amount;
+                    margin_price * position.lots_amount;
                 buy_volume += position.lots_amount;
                 contract_size_sum += position.contract_size;
             }
             false => {
                 sell_margin_price_sum +=
-                    position.margin_bidask.get_open_price(position.is_buy) * position.lots_amount;
+                    margin_price * position.lots_amount;
                 sell_volume += position.lots_amount;
                 contract_size_sum += position.contract_size;
             }
@@ -157,4 +158,90 @@ fn calculate_specific_instrument_margin_and_gross_pl(
 
     let not_hedge_margin = not_hedged_volume * contract_size * not_hedged_margin_price / leverage;
     (hedged_margin + not_hedge_margin, total_gross_pl)
+}
+
+#[cfg(test)]
+mod test {
+    use crate::{
+        accounts::account::{
+            MicroEngineAccount, calculate_specific_instrument_margin_and_gross_pl,
+        },
+        bidask::dto::MicroEngineBidask,
+        positions::position::MicroEnginePosition,
+        settings::{TradingGroupInstrumentMarkupSettings, TradingGroupInstrumentSettings},
+    };
+
+    #[tokio::test]
+    pub async fn test_account_margin_calculation() {
+        let position = vec![MicroEnginePosition {
+            id: "id".to_string(),
+            trader_id: "TR1".to_string(),
+            account_id: "ACC1".to_string(),
+            base: "EUR".to_string(),
+            quote: "USD".to_string(),
+            collateral: "USD".to_string(),
+            asset_pair: "EURUSD".to_string(),
+            lots_amount: 0.05,
+            contract_size: 100000.0,
+            is_buy: false,
+            pl: 0.0,
+            commission: 0.00,
+            open_bidask: MicroEngineBidask {
+                id: "EURUSD".to_string(),
+                bid: 1.25540,
+                ask: 1.25542,
+                base: "EUR".to_string(),
+                quote: "USD".to_string(),
+            },
+            active_bidask: MicroEngineBidask {
+                id: "EURUSD".to_string(),
+                bid: 1.25540,
+                ask: 1.25542,
+                base: "EUR".to_string(),
+                quote: "USD".to_string(),
+            },
+            margin_bidask: MicroEngineBidask {
+                id: "EURUSD".to_string(),
+                bid: 1.25540,
+                ask: 1.25542,
+                base: "EUR".to_string(),
+                quote: "USD".to_string(),
+            },
+            profit_bidask: MicroEngineBidask::create_blank(),
+            profit_price_assets_subscriptions: vec![],
+            swaps_sum: 0.0,
+        }];
+
+        let account = MicroEngineAccount {
+            id: "ACC1".to_string(),
+            trader_id: "TR1".to_string(),
+            trading_group: "tg1".to_string(),
+            balance: 99488.14,
+            leverage: 100.0,
+            margin: 0.0,
+            equity: 0.0,
+            free_margin: 0.0,
+            margin_level: 0.0,
+        };
+
+        let group = TradingGroupInstrumentSettings {
+            digits: 5,
+            max_leverage: None,
+            markup_settings: Some(TradingGroupInstrumentMarkupSettings {
+                markup_bid: 0.0,
+                markup_ask: 0.0,
+                min_spread: Some(0.00020),
+                max_spread: None,
+            }),
+        };
+
+        let (margin, gross) = calculate_specific_instrument_margin_and_gross_pl(
+            &position.iter().collect::<Vec<_>>(),
+            &account,
+            None,
+            &group,
+        );
+
+        assert_eq!(format!("{:.5}", margin), "62.77000");
+    }
 }
