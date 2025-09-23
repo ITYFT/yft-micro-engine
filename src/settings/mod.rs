@@ -37,7 +37,7 @@ impl TradingSettingsCache {
         }
     }
 
-    pub(crate) fn new_with_mapping(
+    pub fn new_with_mapping(
         settings: Vec<impl Into<MicroEngineTradingGroupSettings>>,
         accounts_mapping: HashMap<String, String>,
     ) -> Self {
