@@ -7,8 +7,8 @@ mod tests {
     use crate::bidask::MicroEngineInstrument;
     use crate::bidask::dto::MicroEngineBidask;
     use crate::positions::position::MicroEnginePosition;
-    use crate::{MicroEngine, settings::MicroEngineTradingGroupSettings};
     use crate::settings::TradingGroupInstrumentSettings;
+    use crate::{MicroEngine, settings::MicroEngineTradingGroupSettings};
     use std::collections::{HashMap, HashSet};
 
     fn sample_settings() -> MicroEngineTradingGroupSettings {
@@ -99,7 +99,8 @@ mod tests {
             collaterals,
             vec![instrument],
             vec![bidask],
-        ).await;
+        )
+        .await;
         assert!(errors.is_empty());
         // Insert a position
         let position = sample_position();

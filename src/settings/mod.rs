@@ -37,6 +37,24 @@ impl TradingSettingsCache {
         }
     }
 
+    pub(crate) fn new_with_mapping(
+        settings: Vec<impl Into<MicroEngineTradingGroupSettings>>,
+        accounts_mapping: HashMap<String, String>,
+    ) -> Self {
+        let mut groups = AHashMap::new();
+
+        for group in settings {
+            let group: MicroEngineTradingGroupSettings = group.into();
+
+            groups.insert(group.id.clone(), group);
+        }
+
+        Self {
+            accounts_mapping: accounts_mapping.into_iter().collect(),
+            groups,
+        }
+    }
+
     pub fn resolve_by_account(&self, account: &str) -> Option<&MicroEngineTradingGroupSettings> {
         let target_group = self.accounts_mapping.get(account)?;
         self.groups.get(target_group)
