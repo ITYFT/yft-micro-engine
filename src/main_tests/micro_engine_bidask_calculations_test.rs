@@ -92,7 +92,7 @@ mod tests {
         let bidask = sample_bidask();
 
         let collaterals = HashSet::from(["USD".to_string()]);
-        let (engine, errors) = MicroEngine::initialize(
+        let (mut engine, errors) = MicroEngine::initialize(
             vec![account.clone()],
             Vec::<MicroEnginePosition>::new(),
             vec![settings],

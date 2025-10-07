@@ -2,7 +2,6 @@ use std::collections::HashSet;
 
 use ahash::AHashSet;
 use cross_calculations::core::CrossCalculationsError;
-use tokio::sync::{Mutex, RwLock};
 
 use crate::{
     accounts::{
@@ -24,11 +23,11 @@ pub mod positions;
 pub mod settings;
 
 pub struct MicroEngine {
-    accounts: RwLock<MicroEngineAccountCache>,
-    positions_cache: RwLock<MicroEnginePositionCache>,
-    settings_cache: RwLock<TradingSettingsCache>,
-    pub bidask_cache: RwLock<MicroEngineBidAskCache>,
-    updated_assets: Mutex<AHashSet<String>>,
+    accounts: MicroEngineAccountCache,
+    positions_cache: MicroEnginePositionCache,
+    settings_cache: TradingSettingsCache,
+    pub bidask_cache: MicroEngineBidAskCache,
+    updated_assets: AHashSet<String>,
 }
 impl MicroEngine {
     pub async fn initialize(
@@ -43,12 +42,12 @@ impl MicroEngine {
         let (bidask_cache, bidask_errors) =
             MicroEngineBidAskCache::new(collaterals, instruments, cached_prices);
 
-        let cache = Self {
-            positions_cache: RwLock::new(MicroEnginePositionCache::new(&bidask_cache, positions)),
-            settings_cache: RwLock::new(TradingSettingsCache::new(settings, &accounts_cache)),
-            accounts: RwLock::new(accounts_cache),
-            bidask_cache: RwLock::new(bidask_cache),
-            updated_assets: Mutex::new(AHashSet::new()),
+        let mut cache = Self {
+            positions_cache: MicroEnginePositionCache::new(&bidask_cache, positions),
+            settings_cache: TradingSettingsCache::new(settings, &accounts_cache),
+            accounts: accounts_cache,
+            bidask_cache: bidask_cache,
+            updated_assets: AHashSet::new(),
         };
 
         cache.recalculate_all().await;
@@ -56,120 +55,101 @@ impl MicroEngine {
         (cache, bidask_errors)
     }
 
-    pub async fn handle_new_price(&self, new_bidask: Vec<MicroEngineBidask>) {
-        let mut updated_assets = self.updated_assets.lock().await;
-        let mut price_cache = self.bidask_cache.write().await;
-
+    pub async fn handle_new_price(&mut self, new_bidask: Vec<MicroEngineBidask>) {
         for bidask in new_bidask {
-            if !updated_assets.contains(&bidask.id) {
-                updated_assets.insert(bidask.id.clone());
+            if !self.updated_assets.contains(&bidask.id) {
+                self.updated_assets.insert(bidask.id.clone());
             }
 
-            price_cache.handle_new(&bidask);
+            self.bidask_cache.handle_new(&bidask);
         }
     }
 
     pub async fn trading_settings_changed(
-        &self,
+        &mut self,
         settings: impl Into<MicroEngineTradingGroupSettings>,
     ) {
         let settings = settings.into();
 
-        let mut settings_cache = self.settings_cache.write().await;
-        settings_cache.insert_or_replace_settings(settings.clone());
+        self.settings_cache
+            .insert_or_replace_settings(settings.clone());
     }
 
     pub async fn insert_or_update_account(
-        &self,
+        &mut self,
         account: impl Into<MicroEngineAccount>,
     ) -> Result<MicroEngineAccountCalculationUpdate, MicroEngineError> {
         let account: MicroEngineAccount = account.into();
-        let (mut accounts, positions_cache, mut settings_cache) = tokio::join!(
-            self.accounts.write(),
-            self.positions_cache.read(),
-            self.settings_cache.write(),
-        );
 
-        accounts.insert_or_update_account(account, &mut settings_cache, &positions_cache)
+        self.accounts.insert_or_update_account(
+            account,
+            &mut self.settings_cache,
+            &self.positions_cache,
+        )
     }
 
     pub async fn insert_or_update_position(
-        &self,
+        &mut self,
         position: impl Into<MicroEnginePosition>,
     ) -> Result<MicroEngineAccountCalculationUpdate, MicroEngineError> {
         let position: MicroEnginePosition = position.into();
-        let (mut accounts, mut positions_cache, settings_cache, bidask_cache) = tokio::join!(
-            self.accounts.write(),
-            self.positions_cache.write(),
-            self.settings_cache.read(),
-            self.bidask_cache.read(),
-        );
 
         let mut position: MicroEnginePosition = position.into();
 
-        let (_, sources) = bidask_cache
+        let (_, sources) = self
+            .bidask_cache
             .get_price_with_source(&position.quote, &position.collateral)
             .ok_or(MicroEngineError::ProfitPriceNotFond)?;
 
         position.profit_price_assets_subscriptions = sources.unwrap_or_default();
 
-        positions_cache.add_position(position.clone());
+        self.positions_cache.add_position(position.clone());
 
-        accounts
-            .recalculate_account_data(&settings_cache, &positions_cache, &position.account_id)
+        self.accounts
+            .recalculate_account_data(
+                &self.settings_cache,
+                &self.positions_cache,
+                &position.account_id,
+            )
             .ok_or(MicroEngineError::AccountNotFound)
     }
 
     pub async fn remove_position(
-        &self,
+        &mut self,
         position_id: &str,
     ) -> Result<MicroEngineAccountCalculationUpdate, MicroEngineError> {
-        let (mut accounts, mut positions_cache, settings_cache) = tokio::join!(
-            self.accounts.write(),
-            self.positions_cache.write(),
-            self.settings_cache.read(),
-        );
-
-        let removed_position = positions_cache
+        let removed_position = self
+            .positions_cache
             .remove_position(position_id)
             .ok_or(MicroEngineError::PositionNotFound)?;
 
-        accounts
+        self.accounts
             .recalculate_account_data(
-                &settings_cache,
-                &positions_cache,
+                &self.settings_cache,
+                &self.positions_cache,
                 &removed_position.account_id,
             )
             .ok_or(MicroEngineError::AccountNotFound)
     }
 
     pub async fn recalculate_accordint_to_updates(
-        &self,
+        &mut self,
     ) -> (
         Option<Vec<MicroEngineAccountCalculationUpdate>>,
         Option<Vec<MicroEnginePositionCalculationUpdate>>,
     ) {
         let updated_prices: Vec<String> = {
-            let mut updated_assets = self.updated_assets.lock().await;
-
-            if updated_assets.is_empty() {
+            if self.updated_assets.is_empty() {
                 return (None, None);
             }
 
-            updated_assets.drain().collect()
+            self.updated_assets.drain().collect()
         };
 
-        let (mut accounts, mut positions_cache, settings_cache, bidask_cache) = tokio::join!(
-            self.accounts.write(),
-            self.positions_cache.write(),
-            self.settings_cache.read(),
-            self.bidask_cache.read(),
-        );
-
-        let positions_update_result = positions_cache.recalculate_positions_pl(
+        let positions_update_result = self.positions_cache.recalculate_positions_pl(
             &updated_prices,
-            &bidask_cache,
-            &settings_cache,
+            &self.bidask_cache,
+            &self.settings_cache,
         );
 
         let Some(positions_update_result) = positions_update_result else {
@@ -181,44 +161,35 @@ impl MicroEngine {
             .map(|x| x.account_id.as_str())
             .collect::<Vec<_>>();
 
-        let accounts_update_result = accounts.recalculate_accounts_data(
-            &settings_cache,
-            &positions_cache,
+        let accounts_update_result = self.accounts.recalculate_accounts_data(
+            &self.settings_cache,
+            &self.positions_cache,
             updated_accounts.as_slice(),
         );
 
         (Some(accounts_update_result), Some(positions_update_result))
     }
 
-    async fn recalculate_all(&self) {
-        let (mut accounts, mut positions_cache, settings_cache, bidask_cache) = tokio::join!(
-            self.accounts.write(),
-            self.positions_cache.write(),
-            self.settings_cache.read(),
-            self.bidask_cache.read(),
-        );
+    async fn recalculate_all(&mut self) {
+        self.positions_cache
+            .recalculate_all_positions(&self.bidask_cache, &self.settings_cache);
 
-        positions_cache.recalculate_all_positions(&bidask_cache, &settings_cache);
-
-        accounts.recalculate_all_accounts(&settings_cache, &positions_cache);
+        self.accounts
+            .recalculate_all_accounts(&self.settings_cache, &self.positions_cache);
     }
 
     pub async fn query_account_cache(
         &self,
         call: impl Fn(&MicroEngineAccountCache) -> Vec<MicroEngineAccount>,
     ) -> Vec<MicroEngineAccount> {
-        let accounts = self.accounts.read().await;
-
-        call(&accounts)
+        call(&self.accounts)
     }
 
     pub async fn query_positions_cache(
         &self,
         call: impl Fn(&MicroEnginePositionCache) -> Vec<MicroEnginePosition>,
     ) -> Vec<MicroEnginePosition> {
-        let positions = self.positions_cache.read().await;
-
-        call(&positions)
+        call(&self.positions_cache)
     }
 }
 
@@ -324,7 +295,7 @@ mod tests {
 
         let collaterals = HashSet::from(["USD".to_string()]);
 
-        let (engine, errors) = MicroEngine::initialize(
+        let (mut engine, errors) = MicroEngine::initialize(
             vec![account.clone()],
             vec![MicroEnginePosition {
                 id: "id".to_string(),
@@ -407,7 +378,7 @@ mod tests {
 
         let collaterals = HashSet::from(["USD".to_string()]);
 
-        let (engine, errors) = MicroEngine::initialize(
+        let (mut engine, errors) = MicroEngine::initialize(
             vec![account.clone()],
             vec![MicroEnginePosition {
                 id: "id".to_string(),
@@ -490,7 +461,7 @@ mod tests {
 
         let collaterals = HashSet::from(["USD".to_string()]);
 
-        let (engine, errors) = MicroEngine::initialize(
+        let (mut engine, errors) = MicroEngine::initialize(
             vec![account.clone()],
             vec![MicroEnginePosition {
                 id: "id".to_string(),
