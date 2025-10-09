@@ -9,7 +9,7 @@ use crate::bidask::dto::MicroEngineBidask;
 
 #[derive(Debug)]
 pub struct TradingSettingsCache {
-    accounts_mapping: AHashMap<String, String>,
+    pub accounts_mapping: AHashMap<String, String>,
     pub groups: AHashMap<String, MicroEngineTradingGroupSettings>,
 }
 

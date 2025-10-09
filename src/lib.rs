@@ -25,7 +25,7 @@ pub mod settings;
 pub struct MicroEngine {
     accounts: MicroEngineAccountCache,
     positions_cache: MicroEnginePositionCache,
-    settings_cache: TradingSettingsCache,
+    pub settings_cache: TradingSettingsCache,
     pub bidask_cache: MicroEngineBidAskCache,
     updated_assets: AHashSet<String>,
 }
