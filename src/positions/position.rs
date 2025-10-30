@@ -65,8 +65,15 @@ impl MicroEnginePosition {
         }
 
         if profit_hit {
-            if let Some(profit_price) = bidask_cache.get_price(&self.quote, &self.collateral) {
-                self.profit_bidask = profit_price
+            if let Some(mut profit_price) = bidask_cache.get_price(&self.quote, &self.collateral) {
+                if let Some(profit_instrument_settings) = settings.instruments.get(&profit_price.id)
+                {
+                    let (new_bid, new_ask) =
+                        profit_instrument_settings.calculate_bidask(&profit_price);
+                    profit_price.bid = new_bid;
+                    profit_price.ask = new_ask;
+                }
+                self.profit_bidask = profit_price;
             }
         }
 
