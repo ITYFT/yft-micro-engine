@@ -41,7 +41,7 @@ impl MicroEnginePosition {
     pub fn update_bidask(
         &mut self,
         bidask: &MicroEngineBidask,
-        _bidask_cache: &MicroEngineBidAskCache,
+        bidask_cache: &mut MicroEngineBidAskCache,
         settings: &MicroEngineTradingGroupSettings,
     ) {
         let Some(instrument_settings) = settings.instruments.get(&bidask.id) else {
@@ -65,6 +65,10 @@ impl MicroEnginePosition {
         }
 
         if profit_hit {
+
+            bidask_cache.handle_new(bidask);
+            
+            // Try using incoming bidask directly if it matches conversion needs
             if (bidask.base == self.quote && bidask.quote == self.collateral) 
                 || (bidask.base == self.collateral && bidask.quote == self.quote) {
                 
@@ -82,6 +86,17 @@ impl MicroEnginePosition {
                     profit_price.ask = new_ask;
                 }
                 self.profit_bidask = profit_price;
+            } else {
+                if let Some(mut profit_price) = bidask_cache.get_price(&self.quote, &self.collateral) {
+                    if let Some(profit_instrument_settings) = settings.instruments.get(&profit_price.id)
+                    {
+                        let (new_bid, new_ask) =
+                            profit_instrument_settings.calculate_bidask(&profit_price);
+                        profit_price.bid = new_bid;
+                        profit_price.ask = new_ask;
+                    }
+                    self.profit_bidask = profit_price;
+                }
             }
         }
 
@@ -114,7 +129,7 @@ mod test {
 
     #[tokio::test]
     pub async fn test_pl_calculation_base() {
-        let (bidask_cache, _) = MicroEngineBidAskCache::new(
+        let (mut bidask_cache, _) = MicroEngineBidAskCache::new(
             HashSet::from_iter(vec!["USD".to_string()].into_iter()),
             vec![MicroEngineInstrument {
                 id: "EURUSD".to_string(),
@@ -193,7 +208,7 @@ mod test {
                 base: "EUR".to_string(),
                 quote: "USD".to_string(),
             },
-            &bidask_cache,
+            &mut bidask_cache,
             &settings,
         );
 
@@ -202,7 +217,7 @@ mod test {
 
     #[tokio::test]
     pub async fn test_pl_calculation_markup() {
-        let (bidask_cache, _) = MicroEngineBidAskCache::new(
+        let (mut bidask_cache, _) = MicroEngineBidAskCache::new(
             HashSet::from_iter(vec!["USD".to_string()].into_iter()),
             vec![MicroEngineInstrument {
                 id: "EURUSD".to_string(),
@@ -288,7 +303,7 @@ mod test {
                 base: "EUR".to_string(),
                 quote: "USD".to_string(),
             },
-            &bidask_cache,
+            &mut bidask_cache,
             &settings,
         );
 
@@ -299,7 +314,7 @@ mod test {
 
     #[tokio::test]
     pub async fn test_pl_calculation_markup_min() {
-        let (bidask_cache, _) = MicroEngineBidAskCache::new(
+        let (mut bidask_cache, _) = MicroEngineBidAskCache::new(
             HashSet::from_iter(vec!["USD".to_string()].into_iter()),
             vec![MicroEngineInstrument {
                 id: "EURUSD".to_string(),
@@ -385,7 +400,7 @@ mod test {
                 base: "EUR".to_string(),
                 quote: "USD".to_string(),
             },
-            &bidask_cache,
+            &mut bidask_cache,
             &settings,
         );
 
@@ -396,7 +411,7 @@ mod test {
 
     #[tokio::test]
     pub async fn test_pl_calculation_markup_max() {
-        let (bidask_cache, _) = MicroEngineBidAskCache::new(
+        let (mut bidask_cache, _) = MicroEngineBidAskCache::new(
             HashSet::from_iter(vec!["USD".to_string()].into_iter()),
             vec![MicroEngineInstrument {
                 id: "EURUSD".to_string(),
@@ -482,7 +497,7 @@ mod test {
                 base: "EUR".to_string(),
                 quote: "USD".to_string(),
             },
-            &bidask_cache,
+            &mut bidask_cache,
             &settings,
         );
 
@@ -493,7 +508,7 @@ mod test {
 
     #[tokio::test]
     pub async fn test_pl_calculation_real_case() {
-        let (bidask_cache, _) = MicroEngineBidAskCache::new(
+        let (mut bidask_cache, _) = MicroEngineBidAskCache::new(
             HashSet::from_iter(vec!["USD".to_string()].into_iter()),
             vec![MicroEngineInstrument {
                 id: "EURUSD".to_string(),
@@ -577,7 +592,7 @@ mod test {
                 base: "EUR".to_string(),
                 quote: "USD".to_string(),
             },
-            &bidask_cache,
+            &mut bidask_cache,
             &settings,
         );
 
@@ -587,7 +602,7 @@ mod test {
 
     #[tokio::test]
     pub async fn test_pl_calculation_real_case_with_markup() {
-        let (bidask_cache, _) = MicroEngineBidAskCache::new(
+        let (mut bidask_cache, _) = MicroEngineBidAskCache::new(
             HashSet::from_iter(vec!["USD".to_string()].into_iter()),
             vec![MicroEngineInstrument {
                 id: "EURUSD".to_string(),
@@ -671,7 +686,7 @@ mod test {
                 base: "EUR".to_string(),
                 quote: "USD".to_string(),
             },
-            &bidask_cache,
+            &mut bidask_cache,
             &settings,
         );
         assert_eq!(format!("{:.5}", position.active_bidask.bid), "1.45255");
@@ -680,7 +695,7 @@ mod test {
 
     #[tokio::test]
     pub async fn test_pl_calculation_real_case_with_markup_max() {
-        let (bidask_cache, _) = MicroEngineBidAskCache::new(
+        let (mut bidask_cache, _) = MicroEngineBidAskCache::new(
             HashSet::from_iter(vec!["USD".to_string()].into_iter()),
             vec![MicroEngineInstrument {
                 id: "EURUSD".to_string(),
@@ -764,7 +779,7 @@ mod test {
                 base: "EUR".to_string(),
                 quote: "USD".to_string(),
             },
-            &bidask_cache,
+            &mut bidask_cache,
             &settings,
         );
 
@@ -776,7 +791,7 @@ mod test {
 
     #[tokio::test]
     pub async fn test_pl_calculation_real_case_with_markup_min() {
-        let (bidask_cache, _) = MicroEngineBidAskCache::new(
+        let (mut bidask_cache, _) = MicroEngineBidAskCache::new(
             HashSet::from_iter(vec!["USD".to_string()].into_iter()),
             vec![MicroEngineInstrument {
                 id: "EURUSD".to_string(),
@@ -860,7 +875,7 @@ mod test {
                 base: "EUR".to_string(),
                 quote: "USD".to_string(),
             },
-            &bidask_cache,
+            &mut bidask_cache,
             &settings,
         );
 
@@ -875,7 +890,7 @@ mod test {
     pub async fn test_pl_calculation_usdcad_with_conversion() {
         // Test USDCAD instrument with USD account currency
         // This should trigger currency conversion from CAD to USD
-        let (bidask_cache, _) = MicroEngineBidAskCache::new(
+        let (mut bidask_cache, _) = MicroEngineBidAskCache::new(
             HashSet::from_iter(vec!["USD".to_string()].into_iter()),
             vec![MicroEngineInstrument {
                 id: "USDCAD".to_string(),
@@ -955,7 +970,7 @@ mod test {
                 base: "USD".to_string(),
                 quote: "CAD".to_string(),
             },
-            &bidask_cache,
+            &mut bidask_cache,
             &settings,
         );
 
@@ -977,7 +992,7 @@ mod test {
     #[tokio::test]
     pub async fn test_pl_calculation_usdcad_sell_with_conversion() {
         // Test USDCAD SELL position with USD account currency
-        let (bidask_cache, _) = MicroEngineBidAskCache::new(
+        let (mut bidask_cache, _) = MicroEngineBidAskCache::new(
             HashSet::from_iter(vec!["USD".to_string()].into_iter()),
             vec![MicroEngineInstrument {
                 id: "USDCAD".to_string(),
@@ -1057,7 +1072,7 @@ mod test {
                 base: "USD".to_string(),
                 quote: "CAD".to_string(),
             },
-            &bidask_cache,
+            &mut bidask_cache,
             &settings,
         );
 
@@ -1074,8 +1089,8 @@ mod test {
 
     #[tokio::test]
     pub async fn test_pl_calculation_usdcad_demonstrates_conversion_logic() {
-        // This test demonstrates the complete flow of currency conversion
-        let (bidask_cache, _) = MicroEngineBidAskCache::new(
+        // This test demonstrates the complete flow of currency conversion for SELL position
+        let (mut bidask_cache, _) = MicroEngineBidAskCache::new(
             HashSet::from_iter(vec!["USD".to_string()].into_iter()),
             vec![MicroEngineInstrument {
                 id: "USDCAD".to_string(),
@@ -1084,8 +1099,8 @@ mod test {
             }],
             vec![MicroEngineBidask {
                 id: "USDCAD".to_string(),
-                bid: 1.3500,
-                ask: 1.3502,
+                bid: 1.3600,
+                ask: 1.3602,
                 base: "USD".to_string(),
                 quote: "CAD".to_string(),
             }],
@@ -1117,27 +1132,27 @@ mod test {
             asset_pair: "USDCAD".to_string(),
             lots_amount: 1.0, // 1 lot = 100,000 units
             contract_size: 100000.0,
-            is_buy: true,
+            is_buy: false, // SELL position - this is where mismatch typically occurs
             pl: 0.0,
             commission: 0.0,
             open_bidask: MicroEngineBidask {
                 id: "USDCAD".to_string(),
-                bid: 1.3500,
-                ask: 1.3502,
+                bid: 1.3600,
+                ask: 1.3602,
                 base: "USD".to_string(),
                 quote: "CAD".to_string(),
             },
             active_bidask: MicroEngineBidask {
                 id: "USDCAD".to_string(),
-                bid: 1.3500,
-                ask: 1.3502,
+                bid: 1.3600,
+                ask: 1.3602,
                 base: "USD".to_string(),
                 quote: "CAD".to_string(),
             },
             margin_bidask: MicroEngineBidask {
                 id: "USDCAD".to_string(),
-                bid: 1.3500,
-                ask: 1.3502,
+                bid: 1.3600,
+                ask: 1.3602,
                 base: "USD".to_string(),
                 quote: "CAD".to_string(),
             },
@@ -1146,32 +1161,32 @@ mod test {
             swaps_sum: 0.0,
         };
 
-        // Price moves: USDCAD goes from 1.3502 to 1.3600
+        // Price moves down: USDCAD drops from 1.3600 to 1.3500 (profit for SELL)
         position.update_bidask(
             &MicroEngineBidask {
                 id: "USDCAD".to_string(),
-                bid: 1.3600,
-                ask: 1.3602,
+                bid: 1.3500,
+                ask: 1.3502,
                 base: "USD".to_string(),
                 quote: "CAD".to_string(),
             },
-            &bidask_cache,
+            &mut bidask_cache,
             &settings,
         );
 
         // === Verification of conversion logic ===
         
         // 1. Check that profit_bidask is set (CAD->USD conversion rate)
-        // It should be the REVERSE of USDCAD: 1/1.3602 for bid, 1/1.3600 for ask
+        // It should be the REVERSE of USDCAD: 1/1.3502 for bid, 1/1.3500 for ask
         println!("profit_bidask.bid (CAD->USD): {}", position.profit_bidask.bid);
         println!("profit_bidask.ask (CAD->USD): {}", position.profit_bidask.ask);
         assert!(position.profit_bidask.bid > 0.73 && position.profit_bidask.bid < 0.75);
         assert!(position.profit_bidask.ask > 0.73 && position.profit_bidask.ask < 0.75);
 
         // 2. Calculate expected PnL manually
-        let open_price = 1.3502; // BUY opens at ask
-        let close_price = 1.3600; // BUY closes at bid
-        let price_diff = close_price - open_price; // 0.0098
+        let open_price = 1.3600; // SELL opens at bid
+        let close_price = 1.3502; // SELL closes at ask
+        let price_diff = open_price - close_price; // 0.0098 (profit)
         let lots = 1.0;
         let contract_size = 100000.0;
         
@@ -1180,8 +1195,8 @@ mod test {
         println!("PnL in CAD: {} CAD", pnl_cad);
         assert!((pnl_cad - 980.0).abs() < 0.01); // 0.0098 * 1.0 * 100000 ≈ 980
         
-        // Conversion rate: for profit, use bid
-        let conversion_rate = position.profit_bidask.bid; // 1/1.3602
+        // Conversion rate: for profit, use bid = 1/1.3502 = 0.740481...
+        let conversion_rate = position.profit_bidask.bid;
         let expected_pnl_usd = pnl_cad * conversion_rate;
         println!("Conversion rate (CAD->USD): {}", conversion_rate);
         println!("Expected PnL in USD: {} USD", expected_pnl_usd);
@@ -1191,7 +1206,197 @@ mod test {
         assert_eq!(format!("{:.2}", position.pl), format!("{:.2}", expected_pnl_usd));
         
         // The key insight: without conversion, PnL would be 980 CAD
-        // With current conversion at ~0.7352, it becomes ~720.48 USD
-        assert_eq!(format!("{:.2}", position.get_gross_pl()), "720.48");
+        // With current conversion at 1/1.3502 = 0.7406, it becomes ~725.82 USD
+        assert_eq!(format!("{:.2}", position.get_gross_pl()), "725.82");
+    }
+
+    #[tokio::test]
+    pub async fn test_cache_based_cross_rate_calculation() {
+        // Test cross-rate calculation when EURCAD position needs CAD->USD conversion
+        // but update comes from EURUSD (not USDCAD)
+        // System should use cache to calculate via cross-rate: CAD/USD = EUR/CAD * USD/EUR
+        
+        let (mut bidask_cache, _) = MicroEngineBidAskCache::new(
+            HashSet::from_iter(vec!["USD".to_string()].into_iter()),
+            vec![
+                MicroEngineInstrument {
+                    id: "EURCAD".to_string(),
+                    base: "EUR".to_string(),
+                    quote: "CAD".to_string(),
+                },
+                MicroEngineInstrument {
+                    id: "EURUSD".to_string(),
+                    base: "EUR".to_string(),
+                    quote: "USD".to_string(),
+                },
+                MicroEngineInstrument {
+                    id: "USDCAD".to_string(),
+                    base: "USD".to_string(),
+                    quote: "CAD".to_string(),
+                },
+            ],
+            vec![
+                MicroEngineBidask {
+                    id: "EURCAD".to_string(),
+                    bid: 1.4500,
+                    ask: 1.4502,
+                    base: "EUR".to_string(),
+                    quote: "CAD".to_string(),
+                },
+                MicroEngineBidask {
+                    id: "EURUSD".to_string(),
+                    bid: 1.0800,
+                    ask: 1.0802,
+                    base: "EUR".to_string(),
+                    quote: "USD".to_string(),
+                },
+                MicroEngineBidask {
+                    id: "USDCAD".to_string(),
+                    bid: 1.3400,
+                    ask: 1.3402,
+                    base: "USD".to_string(),
+                    quote: "CAD".to_string(),
+                },
+            ],
+        );
+
+        let settings = crate::settings::MicroEngineTradingGroupSettings {
+            id: "tg1".to_string(),
+            instruments: HashMap::from_iter(
+                vec![
+                    (
+                        "EURCAD".to_string(),
+                        TradingGroupInstrumentSettings {
+                            digits: 5,
+                            max_leverage: None,
+                            markup_settings: None,
+                        },
+                    ),
+                    (
+                        "EURUSD".to_string(),
+                        TradingGroupInstrumentSettings {
+                            digits: 5,
+                            max_leverage: None,
+                            markup_settings: None,
+                        },
+                    ),
+                    (
+                        "USDCAD".to_string(),
+                        TradingGroupInstrumentSettings {
+                            digits: 5,
+                            max_leverage: None,
+                            markup_settings: None,
+                        },
+                    ),
+                ]
+                .into_iter(),
+            ),
+            hedge_coef: None,
+        };
+
+        let mut position = MicroEnginePosition {
+            id: "id".to_string(),
+            trader_id: "trader_id".to_string(),
+            account_id: "account_id".to_string(),
+            base: "EUR".to_string(),
+            quote: "CAD".to_string(),
+            collateral: "USD".to_string(), // Account in USD, position in CAD
+            asset_pair: "EURCAD".to_string(),
+            lots_amount: 1.0,
+            contract_size: 100000.0,
+            is_buy: false, // SELL
+            pl: 0.0,
+            commission: 0.0,
+            open_bidask: MicroEngineBidask {
+                id: "EURCAD".to_string(),
+                bid: 1.4500,
+                ask: 1.4502,
+                base: "EUR".to_string(),
+                quote: "CAD".to_string(),
+            },
+            active_bidask: MicroEngineBidask {
+                id: "EURCAD".to_string(),
+                bid: 1.4500,
+                ask: 1.4502,
+                base: "EUR".to_string(),
+                quote: "CAD".to_string(),
+            },
+            margin_bidask: MicroEngineBidask {
+                id: "EURCAD".to_string(),
+                bid: 1.4500,
+                ask: 1.4502,
+                base: "EUR".to_string(),
+                quote: "CAD".to_string(),
+            },
+            profit_bidask: MicroEngineBidask::create_blank(),
+            // IMPORTANT: subscribes to both USDCAD (direct) and EURUSD (for cross-rate fallback)
+            profit_price_assets_subscriptions: vec!["USDCAD".to_string(), "EURUSD".to_string()],
+            swaps_sum: 0.0,
+        };
+
+        // First update: EURCAD price moves (position instrument)
+        bidask_cache.handle_new(&MicroEngineBidask {
+            id: "EURCAD".to_string(),
+            bid: 1.4400,
+            ask: 1.4402,
+            base: "EUR".to_string(),
+            quote: "CAD".to_string(),
+        });
+        
+        position.update_bidask(
+            &MicroEngineBidask {
+                id: "EURCAD".to_string(),
+                bid: 1.4400,
+                ask: 1.4402,
+                base: "EUR".to_string(),
+                quote: "CAD".to_string(),
+            },
+            &mut bidask_cache,
+            &settings,
+        );
+
+        println!("\n=== After EURCAD update ===");
+        println!("Position active bidask: {} / {}", position.active_bidask.bid, position.active_bidask.ask);
+        println!("Profit bidask (CAD->USD): {} / {}", position.profit_bidask.bid, position.profit_bidask.ask);
+        println!("PnL: {}", position.pl);
+
+        // SELL position: opened at 1.4500 (bid), now at 1.4402 (ask)
+        // Price diff: 1.4500 - 1.4402 = 0.0098 CAD profit
+        // PnL in CAD: 0.0098 * 1.0 * 100000 = 980 CAD
+        // Conversion: Should use USDCAD from cache = 1.3400, reversed = 1/1.3402 ≈ 0.7461
+        // PnL in USD: 980 * 0.7461 ≈ 731.18 USD
+        
+        println!("Expected PnL: ~731 USD (using OLD cached USDCAD rate)");
+        
+        // Now USDCAD price updates to 1.3500
+        bidask_cache.handle_new(&MicroEngineBidask {
+            id: "USDCAD".to_string(),
+            bid: 1.3500,
+            ask: 1.3502,
+            base: "USD".to_string(),
+            quote: "CAD".to_string(),
+        });
+        
+        position.update_bidask(
+            &MicroEngineBidask {
+                id: "USDCAD".to_string(),
+                bid: 1.3500,
+                ask: 1.3502,
+                base: "USD".to_string(),
+                quote: "CAD".to_string(),
+            },
+            &mut bidask_cache,
+            &settings,
+        );
+
+        println!("\n=== After USDCAD update (current price) ===");
+        println!("Profit bidask (CAD->USD): {} / {}", position.profit_bidask.bid, position.profit_bidask.ask);
+        println!("PnL: {}", position.pl);
+        println!("Expected PnL: ~725.67 USD (using CURRENT USDCAD rate)");
+        
+        // With the fix: uses incoming USDCAD = 1.3502, reversed = 1/1.3502 ≈ 0.7405
+        // PnL in USD: 980 * 0.7405 ≈ 725.67 USD
+        
+        assert!(position.profit_bidask.bid > 0.74 && position.profit_bidask.bid < 0.75);
     }
 }

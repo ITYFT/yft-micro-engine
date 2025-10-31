@@ -95,7 +95,7 @@ impl MicroEnginePositionCache {
     pub fn recalculate_positions_pl(
         &mut self,
         updated_prices: &[String],
-        bidask_cache: &MicroEngineBidAskCache,
+        bidask_cache: &mut MicroEngineBidAskCache,
         settings_cache: &TradingSettingsCache,
     ) -> Option<Vec<MicroEnginePositionCalculationUpdate>> {
         if updated_prices.is_empty() {
@@ -116,16 +116,23 @@ impl MicroEnginePositionCache {
                 positions.extend(profit_positions);
             }
 
-            if let Some(target_price) = bidask_cache.get_by_id(&price_id) {
-                for position_id in positions {
-                    if let Some(position) = self.positions.get_mut(position_id) {
-                        let Some(group_settings) =
-                            settings_cache.resolve_by_account(&position.account_id)
-                        else {
-                            continue;
-                        };
+            {
+                let target_price_exists = bidask_cache.get_by_id(&price_id).is_some();
+                if !target_price_exists {
+                    continue;
+                }
+            }
 
-                        position.update_bidask(target_price, bidask_cache, group_settings);
+            for position_id in positions {
+                if let Some(position) = self.positions.get_mut(position_id) {
+                    let Some(group_settings) =
+                        settings_cache.resolve_by_account(&position.account_id)
+                    else {
+                        continue;
+                    };
+
+                    if let Some(target_price) = bidask_cache.get_by_id(&price_id).cloned() {
+                        position.update_bidask(&target_price, bidask_cache, group_settings);
 
                         updated_positions.get_or_insert_default().push(
                             MicroEnginePositionCalculationUpdate {
@@ -143,20 +150,30 @@ impl MicroEnginePositionCache {
 
     pub fn recalculate_all_positions(
         &mut self,
-        bidask_cache: &MicroEngineBidAskCache,
+        bidask_cache: &mut MicroEngineBidAskCache,
         settings_cache: &TradingSettingsCache,
-    ) {
+    ) -> Option<Vec<MicroEnginePositionCalculationUpdate>> {
+        let mut updated_positions: Option<Vec<MicroEnginePositionCalculationUpdate>> = None;
+
         for (id, position) in self.positions.iter_mut() {
             let Some(group_settings) = settings_cache.resolve_by_account(&position.account_id)
             else {
                 continue;
             };
 
-            let Some(price) = bidask_cache.get_by_id(id) else {
-                continue;
-            };
+            if let Some(price) = bidask_cache.get_by_id(id).cloned() {
+                position.update_bidask(&price, bidask_cache, group_settings);
 
-            position.update_bidask(price, bidask_cache, group_settings);
+                updated_positions.get_or_insert_default().push(
+                    MicroEnginePositionCalculationUpdate {
+                        account_id: position.account_id.clone(),
+                        position_id: position.id.clone(),
+                        gross_pl: position.get_gross_pl(),
+                    },
+                );
+            }
         }
+
+        updated_positions
     }
 }

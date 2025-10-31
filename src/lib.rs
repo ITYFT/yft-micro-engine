@@ -148,7 +148,7 @@ impl MicroEngine {
 
         let positions_update_result = self.positions_cache.recalculate_positions_pl(
             &updated_prices,
-            &self.bidask_cache,
+            &mut self.bidask_cache,
             &self.settings_cache,
         );
 
@@ -172,7 +172,7 @@ impl MicroEngine {
 
     async fn recalculate_all(&mut self) {
         self.positions_cache
-            .recalculate_all_positions(&self.bidask_cache, &self.settings_cache);
+            .recalculate_all_positions(&mut self.bidask_cache, &self.settings_cache);
 
         self.accounts
             .recalculate_all_accounts(&self.settings_cache, &self.positions_cache);
