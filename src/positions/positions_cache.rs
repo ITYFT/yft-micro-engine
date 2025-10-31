@@ -104,6 +104,14 @@ impl MicroEnginePositionCache {
 
         let mut updated_positions: Option<Vec<MicroEnginePositionCalculationUpdate>> = None;
         for price_id in updated_prices.into_iter() {
+            
+            let target_price = match bidask_cache.get_by_id(&price_id).cloned() {
+                Some(price) => price,
+                None => continue,
+            };
+
+            bidask_cache.handle_new(&target_price);
+
             let mut positions = vec![];
 
             if let Some(direct_positions) = self.indexes.asset_pair_index.get(price_id) {
@@ -116,13 +124,6 @@ impl MicroEnginePositionCache {
                 positions.extend(profit_positions);
             }
 
-            {
-                let target_price_exists = bidask_cache.get_by_id(&price_id).is_some();
-                if !target_price_exists {
-                    continue;
-                }
-            }
-
             for position_id in positions {
                 if let Some(position) = self.positions.get_mut(position_id) {
                     let Some(group_settings) =
@@ -131,17 +132,15 @@ impl MicroEnginePositionCache {
                         continue;
                     };
 
-                    if let Some(target_price) = bidask_cache.get_by_id(&price_id).cloned() {
-                        position.update_bidask(&target_price, bidask_cache, group_settings);
+                    position.update_bidask(&target_price, bidask_cache, group_settings);
 
-                        updated_positions.get_or_insert_default().push(
-                            MicroEnginePositionCalculationUpdate {
-                                account_id: position.account_id.clone(),
-                                position_id: position.id.clone(),
-                                gross_pl: position.get_gross_pl(),
-                            },
-                        );
-                    }
+                    updated_positions.get_or_insert_default().push(
+                        MicroEnginePositionCalculationUpdate {
+                            account_id: position.account_id.clone(),
+                            position_id: position.id.clone(),
+                            gross_pl: position.get_gross_pl(),
+                        },
+                    );
                 }
             }
         }

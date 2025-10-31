@@ -65,10 +65,6 @@ impl MicroEnginePosition {
         }
 
         if profit_hit {
-
-            bidask_cache.handle_new(bidask);
-            
-            // Try using incoming bidask directly if it matches conversion needs
             if (bidask.base == self.quote && bidask.quote == self.collateral) 
                 || (bidask.base == self.collateral && bidask.quote == self.quote) {
                 
