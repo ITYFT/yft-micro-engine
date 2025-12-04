@@ -2,6 +2,7 @@ use chrono::{DateTime, Utc};
 
 use crate::{
     bidask::{MicroEngineBidAskCache, dto::MicroEngineBidask},
+    round_float_to_digits,
     settings::MicroEngineTradingGroupSettings,
 };
 
@@ -109,7 +110,9 @@ impl MicroEnginePosition {
             false => self.profit_bidask.ask,
         };
 
-        self.pl = diff * self.lots_amount * self.contract_size * profit_price;
+        let raw_pl = diff * self.lots_amount * self.contract_size * profit_price;
+        
+        self.pl = round_float_to_digits(raw_pl, 2);
     }
 }
 

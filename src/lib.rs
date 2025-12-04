@@ -22,6 +22,12 @@ pub mod main_tests;
 pub mod positions;
 pub mod settings;
 
+
+pub fn round_float_to_digits(value: f64, digits: i32) -> f64 {
+    let factor = 10_f64.powi(digits);
+    (value * factor).round() / factor
+}
+
 pub struct MicroEngine {
     accounts: MicroEngineAccountCache,
     positions_cache: MicroEnginePositionCache,
