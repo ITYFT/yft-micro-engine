@@ -75,7 +75,15 @@ impl MicroEnginePosition {
                     bidask.reverse()
                 };
 
-                if let Some(profit_instrument_settings) = settings.instruments.get(&profit_price.id)
+                // Use the original bidask.id to look up settings, not the reversed ID
+                // (reversed bidask has ID like "REVERSE-USDCAD" which doesn't exist in settings)
+                let original_instrument_id = if profit_price.id.starts_with("REVERSE-") {
+                    &bidask.id
+                } else {
+                    &profit_price.id
+                };
+
+                if let Some(profit_instrument_settings) = settings.instruments.get(original_instrument_id)
                 {
                     let (new_bid, new_ask) =
                         profit_instrument_settings.calculate_bidask(&profit_price);
@@ -112,7 +120,14 @@ impl MicroEnginePosition {
 
         let raw_pl = diff * self.lots_amount * self.contract_size * profit_price;
         
-        self.pl = round_float_to_digits(raw_pl, 2);
+        // Use instrument settings digits for rounding, matching trading-engine-core behavior
+        let digits = settings
+            .instruments
+            .get(&self.asset_pair)
+            .map(|s| s.digits as i32)
+            .unwrap_or(2); // Fallback to 2 if instrument not found
+        
+        self.pl = round_float_to_digits(raw_pl, digits);
     }
 }
 
@@ -985,6 +1000,8 @@ mod test {
         assert!(position.profit_bidask.bid < 0.8);
 
         // Check the final PnL calculation - now using current conversion rate
+        // Note: With the fix, settings are now correctly applied to reversed bidask
+        // Using instrument digits (5) for rounding instead of hardcoded 2
         assert_eq!(format!("{:.5}", position.get_gross_pl()), "7.20482");
     }
 
@@ -1083,7 +1100,135 @@ mod test {
         // PnL in USD: 9.8 * 0.740481 = 7.204824... USD
 
         // Check the final PnL calculation - now using current conversion rate
+        // Note: With the fix, settings are now correctly applied to reversed bidask
+        // Using instrument digits (5) for rounding instead of hardcoded 2
         assert_eq!(format!("{:.5}", position.get_gross_pl()), "7.25818");
+    }
+
+    #[tokio::test]
+    pub async fn test_pl_calculation_usdcad_with_conversion_and_markup() {
+        // Test USDCAD with markup to verify the fix for reversed bidask markup application
+        // This test verifies that markup is correctly applied to the reversed USDCAD bidask
+        let (mut bidask_cache, _) = MicroEngineBidAskCache::new(
+            HashSet::from_iter(vec!["USD".to_string()].into_iter()),
+            vec![MicroEngineInstrument {
+                id: "USDCAD".to_string(),
+                base: "USD".to_string(),
+                quote: "CAD".to_string(),
+            }],
+            vec![MicroEngineBidask {
+                id: "USDCAD".to_string(),
+                bid: 1.3500,
+                ask: 1.3502,
+                base: "USD".to_string(),
+                quote: "CAD".to_string(),
+            }],
+        );
+
+        let point_size = 1f64 / 10f64.powi(5 as i32);
+
+        let settings = crate::settings::MicroEngineTradingGroupSettings {
+            id: "tg1".to_string(),
+            instruments: HashMap::from_iter(
+                vec![(
+                    "USDCAD".to_string(),
+                    TradingGroupInstrumentSettings {
+                        digits: 5,
+                        max_leverage: None,
+                        markup_settings: Some(TradingGroupInstrumentMarkupSettings {
+                            markup_bid: -50.0 * point_size,  // -0.0005
+                            markup_ask: 50.0 * point_size,   // +0.0005
+                            min_spread: None,
+                            max_spread: None,
+                        }),
+                    },
+                )]
+                .into_iter(),
+            ),
+            hedge_coef: None,
+        };
+
+        let mut position = MicroEnginePosition {
+            id: "id".to_string(),
+            trader_id: "trader_id".to_string(),
+            account_id: "account_id".to_string(),
+            base: "USD".to_string(),
+            quote: "CAD".to_string(),
+            collateral: "USD".to_string(),
+            asset_pair: "USDCAD".to_string(),
+            lots_amount: 1.0,
+            contract_size: 100000.0,
+            is_buy: true,
+            pl: 0.0,
+            commission: 0.0,
+            open_bidask: MicroEngineBidask {
+                id: "USDCAD".to_string(),
+                bid: 1.3500,
+                ask: 1.3502,
+                base: "USD".to_string(),
+                quote: "CAD".to_string(),
+            },
+            active_bidask: MicroEngineBidask {
+                id: "USDCAD".to_string(),
+                bid: 1.3500,
+                ask: 1.3502,
+                base: "USD".to_string(),
+                quote: "CAD".to_string(),
+            },
+            margin_bidask: MicroEngineBidask {
+                id: "USDCAD".to_string(),
+                bid: 1.3500,
+                ask: 1.3502,
+                base: "USD".to_string(),
+                quote: "CAD".to_string(),
+            },
+            profit_bidask: MicroEngineBidask::create_blank(),
+            profit_price_assets_subscriptions: vec!["USDCAD".to_string()],
+            swaps_sum: 0.0,
+        };
+
+        // Update with new price: USDCAD rises to 1.3600
+        position.update_bidask(
+            &MicroEngineBidask {
+                id: "USDCAD".to_string(),
+                bid: 1.3600,
+                ask: 1.3602,
+                base: "USD".to_string(),
+                quote: "CAD".to_string(),
+            },
+            &mut bidask_cache,
+            &settings,
+        );
+
+        // BUY position: opened at 1.3502 (ask), now at 1.3600 (bid for closing)
+        // Price change: 1.3600 - 1.3502 = 0.0098 CAD per 1 USD
+        // Raw PnL in CAD: 0.0098 * 1.0 * 100000 = 980 CAD
+        
+        // With markup: USDCAD bid becomes 1.3600 - 0.0005 = 1.3595, ask becomes 1.3602 + 0.0005 = 1.3607
+        // Reversed USDCAD (CAD->USD): bid = 1/ask = 1/1.3607 = 0.7350..., ask = 1/bid = 1/1.3595 = 0.7355...
+        // For profit (diff > 0), we use profit_bidask.bid = 1/1.3607 = 0.7350...
+        // PnL in USD: 980 * 0.7350... ≈ 720.30 USD (with markup applied)
+
+        // Verify that profit_bidask was updated and markup was applied
+        // The reversed bidask should have markup applied (different from raw 1/1.3602)
+        assert!(position.profit_bidask.bid > 0.73);
+        assert!(position.profit_bidask.bid < 0.74);
+        
+        // The key verification: profit_bidask should have markup applied
+        // Without markup: bid would be 1/1.3602 = 0.735281...
+        // With markup: bid should be 1/(1.3602 + 0.0005) = 1/1.3607 = 0.7350...
+        // This confirms markup is being applied to the reversed bidask
+        let expected_bid_without_markup = 1.0 / 1.3602;
+        let expected_bid_with_markup = 1.0 / (1.3602 + 0.0005);
+        
+        // The actual bid should be closer to the markup version (our fix ensures this)
+        let diff_without = (position.profit_bidask.bid - expected_bid_without_markup).abs();
+        let diff_with = (position.profit_bidask.bid - expected_bid_with_markup).abs();
+        
+        // With the fix, diff_with should be smaller (markup is applied)
+        assert!(diff_with < diff_without, 
+            "Markup should be applied to reversed bidask. Expected closer to {} but got {}", 
+            expected_bid_with_markup, position.profit_bidask.bid);
     }
 
     #[tokio::test]
