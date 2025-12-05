@@ -88,6 +88,12 @@ pub struct MicroEngineTradingGroupSettings {
     pub id: String,
     pub hedge_coef: Option<f64>,
     pub instruments: HashMap<String, TradingGroupInstrumentSettings>,
+    pub collaterals: HashMap<String, CollateralSettings>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CollateralSettings {
+    pub digits: u32,
 }
 
 #[derive(Debug, Clone)]

@@ -122,12 +122,12 @@ impl MicroEnginePosition {
 
         let raw_pl = diff * self.lots_amount * self.contract_size * profit_price;
         
-        // Use instrument settings digits for rounding, matching trading-engine-core behavior
+        // Use collateral currency digits for rounding, matching trading-engine-core behavior
         let digits = settings
-            .instruments
-            .get(&self.asset_pair)
-            .map(|s| s.digits as i32)
-            .unwrap_or(2); // Fallback to 2 if instrument not found
+            .collaterals
+            .get(&self.collateral)
+            .map(|c| c.digits as i32)
+            .unwrap_or(2); // Fallback to 2 if collateral not found
         
         self.pl = round_float_to_digits(raw_pl, digits);
     }
@@ -175,6 +175,9 @@ mod test {
                 .into_iter(),
             ),
             hedge_coef: None,
+            collaterals: HashMap::from_iter(vec![
+                ("USD".to_string(), crate::settings::CollateralSettings { digits: 2 }),
+            ]),
         };
 
         let mut position = MicroEnginePosition {
@@ -270,6 +273,9 @@ mod test {
                 .into_iter(),
             ),
             hedge_coef: None,
+            collaterals: HashMap::from_iter(vec![
+                ("USD".to_string(), crate::settings::CollateralSettings { digits: 2 }),
+            ]),
         };
 
         let mut position = MicroEnginePosition {
@@ -367,6 +373,9 @@ mod test {
                 .into_iter(),
             ),
             hedge_coef: None,
+            collaterals: HashMap::from_iter(vec![
+                ("USD".to_string(), crate::settings::CollateralSettings { digits: 2 }),
+            ]),
         };
 
         let mut position = MicroEnginePosition {
@@ -464,6 +473,9 @@ mod test {
                 .into_iter(),
             ),
             hedge_coef: None,
+            collaterals: HashMap::from_iter(vec![
+                ("USD".to_string(), crate::settings::CollateralSettings { digits: 2 }),
+            ]),
         };
 
         let mut position = MicroEnginePosition {
@@ -559,6 +571,9 @@ mod test {
                 .into_iter(),
             ),
             hedge_coef: None,
+            collaterals: HashMap::from_iter(vec![
+                ("USD".to_string(), crate::settings::CollateralSettings { digits: 2 }),
+            ]),
         };
 
         let mut position = MicroEnginePosition {
@@ -653,6 +668,9 @@ mod test {
                 .into_iter(),
             ),
             hedge_coef: None,
+            collaterals: HashMap::from_iter(vec![
+                ("USD".to_string(), crate::settings::CollateralSettings { digits: 2 }),
+            ]),
         };
 
         let mut position = MicroEnginePosition {
@@ -746,6 +764,9 @@ mod test {
                 .into_iter(),
             ),
             hedge_coef: None,
+            collaterals: HashMap::from_iter(vec![
+                ("USD".to_string(), crate::settings::CollateralSettings { digits: 2 }),
+            ]),
         };
 
         let mut position = MicroEnginePosition {
@@ -842,6 +863,9 @@ mod test {
                 .into_iter(),
             ),
             hedge_coef: None,
+            collaterals: HashMap::from_iter(vec![
+                ("USD".to_string(), crate::settings::CollateralSettings { digits: 2 }),
+            ]),
         };
 
         let mut position = MicroEnginePosition {
@@ -936,6 +960,9 @@ mod test {
                 .into_iter(),
             ),
             hedge_coef: None,
+            collaterals: HashMap::from_iter(vec![
+                ("USD".to_string(), crate::settings::CollateralSettings { digits: 2 }),
+            ]),
         };
 
         let mut position = MicroEnginePosition {
@@ -1003,8 +1030,8 @@ mod test {
 
         // Check the final PnL calculation - now using current conversion rate
         // Note: With the fix, settings are now correctly applied to reversed bidask
-        // Using instrument digits (5) for rounding instead of hardcoded 2
-        assert_eq!(format!("{:.5}", position.get_gross_pl()), "7.20482");
+        // Using collateral currency digits (2 for USD) for rounding, matching trading-engine-core
+        assert_eq!(format!("{:.5}", position.get_gross_pl()), "7.20000");
     }
 
     #[tokio::test]
@@ -1040,6 +1067,9 @@ mod test {
                 .into_iter(),
             ),
             hedge_coef: None,
+            collaterals: HashMap::from_iter(vec![
+                ("USD".to_string(), crate::settings::CollateralSettings { digits: 2 }),
+            ]),
         };
 
         let mut position = MicroEnginePosition {
@@ -1103,8 +1133,8 @@ mod test {
 
         // Check the final PnL calculation - now using current conversion rate
         // Note: With the fix, settings are now correctly applied to reversed bidask
-        // Using instrument digits (5) for rounding instead of hardcoded 2
-        assert_eq!(format!("{:.5}", position.get_gross_pl()), "7.25818");
+        // Using collateral currency digits (2 for USD) for rounding, matching trading-engine-core
+        assert_eq!(format!("{:.5}", position.get_gross_pl()), "7.26000");
     }
 
     #[tokio::test]
@@ -1148,6 +1178,9 @@ mod test {
                 .into_iter(),
             ),
             hedge_coef: None,
+            collaterals: HashMap::from_iter(vec![
+                ("USD".to_string(), crate::settings::CollateralSettings { digits: 2 }),
+            ]),
         };
 
         let mut position = MicroEnginePosition {
@@ -1266,6 +1299,9 @@ mod test {
                 .into_iter(),
             ),
             hedge_coef: None,
+            collaterals: HashMap::from_iter(vec![
+                ("USD".to_string(), crate::settings::CollateralSettings { digits: 2 }),
+            ]),
         };
 
         let mut position = MicroEnginePosition {
@@ -1438,6 +1474,9 @@ mod test {
                 .into_iter(),
             ),
             hedge_coef: None,
+            collaterals: HashMap::from_iter(vec![
+                ("USD".to_string(), crate::settings::CollateralSettings { digits: 2 }),
+            ]),
         };
 
         let mut position = MicroEnginePosition {

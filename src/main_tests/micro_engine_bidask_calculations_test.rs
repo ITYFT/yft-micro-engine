@@ -7,7 +7,7 @@ mod tests {
     use crate::bidask::MicroEngineInstrument;
     use crate::bidask::dto::MicroEngineBidask;
     use crate::positions::position::MicroEnginePosition;
-    use crate::settings::TradingGroupInstrumentSettings;
+    use crate::settings::{CollateralSettings, TradingGroupInstrumentSettings};
     use crate::{MicroEngine, settings::MicroEngineTradingGroupSettings};
     use std::collections::{HashMap, HashSet};
 
@@ -25,6 +25,9 @@ mod tests {
             id: "G1".to_string(),
             hedge_coef: None,
             instruments,
+            collaterals: HashMap::from_iter(vec![
+                ("USD".to_string(), CollateralSettings { digits: 2 }),
+            ]),
         }
     }
 

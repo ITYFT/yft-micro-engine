@@ -216,7 +216,7 @@ mod tests {
     use tokio::runtime::Builder;
 
     use super::*;
-    use crate::settings::{TradingGroupInstrumentMarkupSettings, TradingGroupInstrumentSettings};
+    use crate::settings::{CollateralSettings, TradingGroupInstrumentMarkupSettings, TradingGroupInstrumentSettings};
     use std::collections::{HashMap, HashSet};
 
     fn sample_settings() -> MicroEngineTradingGroupSettings {
@@ -239,6 +239,9 @@ mod tests {
             id: "tg1".to_string(),
             hedge_coef: None,
             instruments,
+            collaterals: HashMap::from_iter(vec![
+                ("USD".to_string(), CollateralSettings { digits: 2 }),
+            ]),
         }
     }
 
@@ -262,6 +265,9 @@ mod tests {
             id: "tg1".to_string(),
             hedge_coef: None,
             instruments,
+            collaterals: HashMap::from_iter(vec![
+                ("USD".to_string(), CollateralSettings { digits: 2 }),
+            ]),
         }
     }
 
