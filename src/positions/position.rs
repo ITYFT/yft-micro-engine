@@ -39,6 +39,7 @@ impl MicroEnginePosition {
         self.pl - self.commission + self.swaps_sum
     }
 
+
     pub fn update_bidask(
         &mut self,
         bidask: &MicroEngineBidask,
@@ -52,33 +53,12 @@ impl MicroEnginePosition {
         let (new_bid, new_ask) = instrument_settings.calculate_bidask(bidask);
 
         if self.asset_pair == bidask.id {
+            // Update active_bidask with markup applied
+            // Note: We don't modify open_bidask here because positions from trading engine
+            // already have markup applied to open_bidask when they're created.
+            // We only apply markup to active_bidask when prices update.
             self.active_bidask.bid = new_bid;
             self.active_bidask.ask = new_ask;
-            
-            // Apply markup to open_bidask if it's for the same instrument
-            // This ensures open_bidask has markup applied, matching trading-engine-core behavior
-            // where markup is applied to open_bidask when the position is created.
-            // We only apply markup if open_bidask exactly matches the incoming raw bidask,
-            // which indicates it's the first update and open_bidask is still the raw opening price.
-            // This prevents double-applying markup if it was already applied during position creation.
-            if self.open_bidask.id == bidask.id {
-                // Check if open_bidask exactly matches the raw bidask (within floating point precision)
-                // If they match exactly, it means open_bidask is still the raw price and needs markup
-                let bid_matches = (self.open_bidask.bid - bidask.bid).abs() < 1e-10;
-                let ask_matches = (self.open_bidask.ask - bidask.ask).abs() < 1e-10;
-                
-                // Also check if active_bidask matches open_bidask (initial state before any updates)
-                let is_initial_state = (self.active_bidask.bid - self.open_bidask.bid).abs() < 1e-10
-                    && (self.active_bidask.ask - self.open_bidask.ask).abs() < 1e-10;
-                
-                // Apply markup if open_bidask matches raw bidask AND we're in initial state
-                // This ensures we only apply markup once, when the position is first initialized
-                if bid_matches && ask_matches && is_initial_state {
-                    let (open_bid, open_ask) = instrument_settings.calculate_bidask(&self.open_bidask);
-                    self.open_bidask.bid = open_bid;
-                    self.open_bidask.ask = open_ask;
-                }
-            }
         }
 
         let mut profit_hit = false;

@@ -109,6 +109,10 @@ impl MicroEngine {
 
         position.profit_price_assets_subscriptions = sources.unwrap_or_default();
 
+        // Note: We don't apply markup to open_bidask here because positions from trading engine
+        // already have markup applied to open_bidask. We only apply markup to active_bidask
+        // when prices update via update_bidask.
+
         self.positions_cache.add_position(position.clone());
 
         self.accounts

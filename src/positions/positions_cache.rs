@@ -38,6 +38,9 @@ impl MicroEnginePositionCache {
                 }
             }
 
+            // Note: We don't apply markup to open_bidask here because we don't have settings yet
+            // It will be applied in recalculate_all_positions or insert_or_update_position
+
             indexes.add_index(&position);
             positions_cache.insert(position.id.clone(), position);
         }
@@ -160,7 +163,11 @@ impl MicroEnginePositionCache {
                 continue;
             };
 
-            if let Some(price) = bidask_cache.get_by_id(id).cloned() {
+            // Get price by asset_pair, not position ID
+            // Note: We don't apply markup to open_bidask here because positions from trading engine
+            // already have markup applied to open_bidask. We only apply markup to active_bidask
+            // when prices update.
+            if let Some(price) = bidask_cache.get_by_id(&position.asset_pair).cloned() {
                 position.update_bidask(&price, bidask_cache, group_settings);
 
                 updated_positions.get_or_insert_default().push(
