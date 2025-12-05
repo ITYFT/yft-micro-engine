@@ -74,20 +74,11 @@ impl MicroEnginePosition {
             if (bidask.base == self.quote && bidask.quote == self.collateral) 
                 || (bidask.base == self.collateral && bidask.quote == self.quote) {
                 
-                let mut profit_price = if bidask.base == self.quote && bidask.quote == self.collateral {
-                    bidask.clone()
-                } else {
-                    bidask.reverse()
-                };
-
-                // Use the original bidask.id to look up settings, not the reversed ID
-                // (reversed bidask has ID like "REVERSE-USDCAD" which doesn't exist in settings)
-                let original_instrument_id = if profit_price.id.starts_with("REVERSE-") {
-                    &bidask.id
-                } else {
-                    &profit_price.id
-                };
-
+                // Use the original bidask.id to look up settings
+                let original_instrument_id = &bidask.id;
+                
+                // First, apply markup to the original bidask
+                let mut profit_price = bidask.clone();
                 if let Some(profit_instrument_settings) = settings.instruments.get(original_instrument_id)
                 {
                     let (new_bid, new_ask) =
@@ -95,6 +86,12 @@ impl MicroEnginePosition {
                     profit_price.bid = new_bid;
                     profit_price.ask = new_ask;
                 }
+                
+                // Then, reverse if needed (Case B: when bidask needs to be reversed)
+                if bidask.base == self.collateral && bidask.quote == self.quote {
+                    profit_price = profit_price.reverse();
+                }
+                
                 self.profit_bidask = profit_price;
             } else {
                 if let Some(mut profit_price) = bidask_cache.get_price(&self.quote, &self.collateral) {
