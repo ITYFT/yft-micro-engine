@@ -164,7 +164,7 @@ fn calculate_max_spread(bid: f64, ask: f64, max_spread: f64, digits: u32) -> (f6
 
         let spread_rounded = spread_rounded.to_f64().unwrap();
 
-        let is_odd: bool = (spread_diff * Decimal::from_f64(factor).unwrap())
+        let is_odd: bool = (spread_diff * Decimal::from_i64(factor).unwrap())
             .to_i32()
             .unwrap()
             % 2
@@ -198,7 +198,7 @@ fn calculate_min_spread(bid: f64, ask: f64, min_spread: f64, digits: u32) -> (f6
             .round_dp_with_strategy(digits, RoundingStrategy::ToZero);
 
         let spread_rounded = spread_rounded.to_f64().unwrap();
-        let is_odd: bool = (spread_diff * Decimal::from_f64(factor).unwrap())
+        let is_odd: bool = (spread_diff * Decimal::from_i64(factor).unwrap())
             .to_i32()
             .unwrap()
             % 2
@@ -231,7 +231,7 @@ fn apply_max_spread(bid_ask: &mut MicroEngineBidask, max_spread: f64, digits: u3
 
         let spread_rounded = spread_rounded.to_f64().unwrap();
 
-        let is_odd: bool = (spread_diff * Decimal::from_f64(factor).unwrap())
+        let is_odd: bool = (spread_diff * Decimal::from_i64(factor).unwrap())
             .to_i32()
             .unwrap()
             % 2
@@ -260,7 +260,7 @@ fn apply_min_spread(bid_ask: &mut MicroEngineBidask, min_spread: f64, digits: u3
             .round_dp_with_strategy(digits, RoundingStrategy::ToZero);
 
         let spread_rounded = spread_rounded.to_f64().unwrap();
-        let is_odd: bool = (spread_diff * Decimal::from_f64(factor).unwrap())
+        let is_odd: bool = (spread_diff * Decimal::from_i64(factor).unwrap())
             .to_i32()
             .unwrap()
             % 2
