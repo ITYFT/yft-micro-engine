@@ -149,8 +149,8 @@ impl TradingGroupInstrumentSettings {
 fn calculate_max_spread(bid: f64, ask: f64, max_spread: f64, digits: u32) -> (f64, f64) {
     let spread = calculate_spread(bid, ask, digits);
     let max_spread = Decimal::from_f64(max_spread).unwrap();
-    let factor = i64::pow(10, digits as u32) as f64;
-    let pip = 1.0 / factor;
+    let factor = i64::pow(10, digits as u32);
+    let pip = 1.0 / (factor as f64);
 
     let mut bid = bid;
     let mut ask = ask;
@@ -185,8 +185,8 @@ fn calculate_max_spread(bid: f64, ask: f64, max_spread: f64, digits: u32) -> (f6
 fn calculate_min_spread(bid: f64, ask: f64, min_spread: f64, digits: u32) -> (f64, f64) {
     let spread = calculate_spread(bid, ask, digits);
     let min_spread = Decimal::from_f64(min_spread).unwrap();
-    let factor = i64::pow(10, digits as u32) as f64;
-    let pip = 1.0 / factor;
+    let factor = i64::pow(10, digits as u32);
+    let pip = 1.0 / (factor as f64);
 
     let mut bid = bid;
     let mut ask = ask;
@@ -219,8 +219,8 @@ fn calculate_min_spread(bid: f64, ask: f64, min_spread: f64, digits: u32) -> (f6
 fn apply_max_spread(bid_ask: &mut MicroEngineBidask, max_spread: f64, digits: u32) {
     let spread = calculate_spread(bid_ask.bid, bid_ask.ask, digits);
     let max_spread = Decimal::from_f64(max_spread).unwrap();
-    let factor = i64::pow(10, digits as u32) as f64;
-    let pip = 1.0 / factor;
+    let factor = i64::pow(10, digits as u32);
+    let pip = 1.0 / (factor as f64);
 
     if spread > max_spread {
         let spread_diff =
@@ -250,8 +250,8 @@ fn apply_max_spread(bid_ask: &mut MicroEngineBidask, max_spread: f64, digits: u3
 fn apply_min_spread(bid_ask: &mut MicroEngineBidask, min_spread: f64, digits: u32) {
     let spread = calculate_spread(bid_ask.bid, bid_ask.ask, digits);
     let min_spread = Decimal::from_f64(min_spread).unwrap();
-    let factor = i64::pow(10, digits as u32) as f64;
-    let pip = 1.0 / factor;
+    let factor = i64::pow(10, digits as u32);
+    let pip = 1.0 / (factor as f64);
 
     if spread < min_spread {
         let spread_diff =
