@@ -170,6 +170,15 @@ impl MicroEnginePositionCache {
             if let Some(price) = bidask_cache.get_by_id(&position.asset_pair).cloned() {
                 position.update_bidask(&price, bidask_cache, group_settings);
 
+                // Explicitly update profit_bidask from raw cache prices for positions that need currency conversion
+                // This is necessary because positions loaded from trading-engine have empty profit_price_assets_subscriptions,
+                // so profit_bidask doesn't get updated in update_bidask. We need to ensure it's updated from raw cache prices
+                // to match trading-engine behavior (no markup on profit_bidask updates).
+                if position.quote != position.collateral {
+                    position.update_profit_bidask_from_cache(bidask_cache);
+                    position.recalculate_pl(group_settings);
+                }
+
                 updated_positions.get_or_insert_default().push(
                     MicroEnginePositionCalculationUpdate {
                         account_id: position.account_id.clone(),

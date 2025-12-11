@@ -91,6 +91,11 @@ impl MicroEnginePosition {
             }
         }
 
+        self.recalculate_pl(settings);
+    }
+
+    /// Recalculate PL based on current open_price, close_price, and profit_bidask
+    pub fn recalculate_pl(&mut self, settings: &MicroEngineTradingGroupSettings) {
         let open_price = self.open_bidask.get_open_price(self.is_buy);
         let close_price = self.active_bidask.get_close_price(self.is_buy);
 
@@ -114,6 +119,19 @@ impl MicroEnginePosition {
             .unwrap_or(2); // Fallback to 2 if collateral not found
         
         self.pl = round_float_to_digits(raw_pl, digits);
+    }
+
+    /// Update profit_bidask from raw cache prices (no markup), matching trading-engine behavior
+    pub fn update_profit_bidask_from_cache(&mut self, bidask_cache: &mut MicroEngineBidAskCache) {
+        // Only update if position needs currency conversion
+        if self.quote == self.collateral {
+            return;
+        }
+
+        // Match trading-engine behavior: get raw price from cache, no markup
+        if let Some(profit_price) = bidask_cache.get_price(&self.quote, &self.collateral) {
+            self.profit_bidask = profit_price;
+        }
     }
 }
 
