@@ -74,34 +74,18 @@ impl MicroEnginePosition {
             if (bidask.base == self.quote && bidask.quote == self.collateral) 
                 || (bidask.base == self.collateral && bidask.quote == self.quote) {
                 
-                // Use the original bidask.id to look up settings
-                let original_instrument_id = &bidask.id;
-                
-                // First, apply markup to the original bidask
+                // Match trading-engine behavior: use raw bidask, reverse if needed
                 let mut profit_price = bidask.clone();
-                if let Some(profit_instrument_settings) = settings.instruments.get(original_instrument_id)
-                {
-                    let (new_bid, new_ask) =
-                        profit_instrument_settings.calculate_bidask(&profit_price);
-                    profit_price.bid = new_bid;
-                    profit_price.ask = new_ask;
-                }
                 
-                // Then, reverse if needed (Case B: when bidask needs to be reversed)
+                // Reverse if needed (Case B: when bidask needs to be reversed)
                 if bidask.base == self.collateral && bidask.quote == self.quote {
                     profit_price = profit_price.reverse();
                 }
                 
                 self.profit_bidask = profit_price;
             } else {
-                if let Some(mut profit_price) = bidask_cache.get_price(&self.quote, &self.collateral) {
-                    if let Some(profit_instrument_settings) = settings.instruments.get(&profit_price.id)
-                    {
-                        let (new_bid, new_ask) =
-                            profit_instrument_settings.calculate_bidask(&profit_price);
-                        profit_price.bid = new_bid;
-                        profit_price.ask = new_ask;
-                    }
+                // Match trading-engine behavior: get raw price from cache, no markup
+                if let Some(profit_price) = bidask_cache.get_price(&self.quote, &self.collateral) {
                     self.profit_bidask = profit_price;
                 }
             }
