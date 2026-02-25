@@ -166,9 +166,11 @@ impl MicroEngine {
             return (None, None);
         };
 
-        let updated_accounts = positions_update_result
+        let updated_accounts: Vec<&str> = positions_update_result
             .iter()
             .map(|x| x.account_id.as_str())
+            .collect::<HashSet<_>>()
+            .into_iter()
             .collect::<Vec<_>>();
 
         let accounts_update_result = self.accounts.recalculate_accounts_data(
