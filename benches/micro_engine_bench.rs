@@ -29,6 +29,7 @@ fn sample_settings() -> MicroEngineTradingGroupSettings {
         id: "G1".to_string(),
         hedge_coef: None,
         instruments,
+        collaterals: std::collections::HashMap::new(),
     }
 }
 
@@ -89,6 +90,7 @@ fn sample_position() -> MicroEnginePosition {
         profit_bidask: MicroEngineBidask::create_blank(),
         profit_price_assets_subscriptions: Vec::new(),
         swaps_sum: 0.0,
+            ..Default::default()
     }
 }
 
@@ -140,6 +142,7 @@ fn gen_positions(n: usize) -> Vec<MicroEnginePosition> {
             profit_bidask: MicroEngineBidask::create_blank(),
             profit_price_assets_subscriptions: Vec::new(),
             swaps_sum: 0.0,
+            ..Default::default()
         })
         .collect()
 }

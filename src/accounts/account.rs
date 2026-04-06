@@ -210,6 +210,7 @@ mod test {
             profit_bidask: MicroEngineBidask::create_blank(),
             profit_price_assets_subscriptions: vec![],
             swaps_sum: 0.0,
+            ..Default::default()
         }];
 
         let account = MicroEngineAccount {

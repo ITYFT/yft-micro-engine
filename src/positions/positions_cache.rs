@@ -11,6 +11,7 @@ pub struct MicroEnginePositionCalculationUpdate {
     pub account_id: String,
     pub position_id: String,
     pub gross_pl: f64,
+    pub sl_price: Option<f64>,
 }
 
 #[derive(Debug, Clone)]
@@ -146,11 +147,16 @@ impl MicroEnginePositionCache {
                         position.recalculate_pl(group_settings);
                     }
 
+                    if let Some(instrument) = group_settings.instruments.get(&position.asset_pair) {
+                        position.recalculate_trailing_sl(instrument.digits as i32);
+                    }
+
                     updated_positions.get_or_insert_default().push(
                         MicroEnginePositionCalculationUpdate {
                             account_id: position.account_id.clone(),
                             position_id: position.id.clone(),
                             gross_pl: position.get_gross_pl(),
+                            sl_price: position.sl_price,
                         },
                     );
                 }
@@ -166,7 +172,7 @@ impl MicroEnginePositionCache {
     ) -> Option<Vec<MicroEnginePositionCalculationUpdate>> {
         let mut updated_positions: Option<Vec<MicroEnginePositionCalculationUpdate>> = None;
 
-        for (id, position) in self.positions.iter_mut() {
+        for (_id, position) in self.positions.iter_mut() {
             let Some(group_settings) = settings_cache.resolve_by_account(&position.account_id)
             else {
                 continue;
@@ -188,11 +194,16 @@ impl MicroEnginePositionCache {
                     position.recalculate_pl(group_settings);
                 }
 
+                if let Some(instrument) = group_settings.instruments.get(&position.asset_pair) {
+                    position.recalculate_trailing_sl(instrument.digits as i32);
+                }
+
                 updated_positions.get_or_insert_default().push(
                     MicroEnginePositionCalculationUpdate {
                         account_id: position.account_id.clone(),
                         position_id: position.id.clone(),
                         gross_pl: position.get_gross_pl(),
+                        sl_price: position.sl_price,
                     },
                 );
             }

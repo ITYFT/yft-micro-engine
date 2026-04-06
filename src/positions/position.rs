@@ -32,6 +32,9 @@ pub struct MicroEnginePosition {
     pub profit_bidask: MicroEngineBidask,
     pub profit_price_assets_subscriptions: Vec<String>,
     pub swaps_sum: f64,
+    pub is_trailing_sl: bool,
+    pub trailing_sl_offset: f64,
+    pub sl_price: Option<f64>,
 }
 
 impl MicroEnginePosition {
@@ -119,6 +122,30 @@ impl MicroEnginePosition {
             .unwrap_or(2); // Fallback to 2 if collateral not found
         
         self.pl = round_float_to_digits(raw_pl, digits);
+    }
+
+    pub fn recalculate_trailing_sl(&mut self, digits: i32) {
+        if !self.is_trailing_sl || self.trailing_sl_offset <= 0.0 {
+            return;
+        }
+
+        let close_price = self.active_bidask.get_close_price(self.is_buy);
+        let new_sl = if self.is_buy {
+            round_float_to_digits(close_price - self.trailing_sl_offset, digits)
+        } else {
+            round_float_to_digits(close_price + self.trailing_sl_offset, digits)
+        };
+
+        let should_update = match self.sl_price {
+            None => true,
+            Some(current_sl) => {
+                if self.is_buy { new_sl > current_sl } else { new_sl < current_sl }
+            }
+        };
+
+        if should_update {
+            self.sl_price = Some(new_sl);
+        }
     }
 
     /// Update profit_bidask from raw cache prices (no markup), matching trading-engine behavior
@@ -219,6 +246,7 @@ mod test {
             profit_bidask: MicroEngineBidask::create_blank(),
             profit_price_assets_subscriptions: vec![],
             swaps_sum: 0.0,
+            ..Default::default()
         };
 
         position.update_bidask(
@@ -317,6 +345,7 @@ mod test {
             profit_bidask: MicroEngineBidask::create_blank(),
             profit_price_assets_subscriptions: vec![],
             swaps_sum: 0.0,
+            ..Default::default()
         };
 
         position.update_bidask(
@@ -417,6 +446,7 @@ mod test {
             profit_bidask: MicroEngineBidask::create_blank(),
             profit_price_assets_subscriptions: vec![],
             swaps_sum: 0.0,
+            ..Default::default()
         };
 
         position.update_bidask(
@@ -517,6 +547,7 @@ mod test {
             profit_bidask: MicroEngineBidask::create_blank(),
             profit_price_assets_subscriptions: vec![],
             swaps_sum: 0.0,
+            ..Default::default()
         };
 
         position.update_bidask(
@@ -615,6 +646,7 @@ mod test {
             profit_bidask: MicroEngineBidask::create_blank(),
             profit_price_assets_subscriptions: vec![],
             swaps_sum: 0.0,
+            ..Default::default()
         };
 
         position.update_bidask(
@@ -712,6 +744,7 @@ mod test {
             profit_bidask: MicroEngineBidask::create_blank(),
             profit_price_assets_subscriptions: vec![],
             swaps_sum: 0.0,
+            ..Default::default()
         };
 
         position.update_bidask(
@@ -808,6 +841,7 @@ mod test {
             profit_bidask: MicroEngineBidask::create_blank(),
             profit_price_assets_subscriptions: vec![],
             swaps_sum: 0.0,
+            ..Default::default()
         };
 
         position.update_bidask(
@@ -907,6 +941,7 @@ mod test {
             profit_bidask: MicroEngineBidask::create_blank(),
             profit_price_assets_subscriptions: vec![],
             swaps_sum: 0.0,
+            ..Default::default()
         };
 
         position.update_bidask(
@@ -1004,6 +1039,7 @@ mod test {
             profit_bidask: MicroEngineBidask::create_blank(),
             profit_price_assets_subscriptions: vec!["USDCAD".to_string()], // CAD->USD needs USDCAD
             swaps_sum: 0.0,
+            ..Default::default()
         };
 
         // Update with new price: USDCAD rises to 1.3600
@@ -1111,6 +1147,7 @@ mod test {
             profit_bidask: MicroEngineBidask::create_blank(),
             profit_price_assets_subscriptions: vec!["USDCAD".to_string()],
             swaps_sum: 0.0,
+            ..Default::default()
         };
 
         // Update with new price: USDCAD drops to 1.3500
@@ -1222,6 +1259,7 @@ mod test {
             profit_bidask: MicroEngineBidask::create_blank(),
             profit_price_assets_subscriptions: vec!["USDCAD".to_string()],
             swaps_sum: 0.0,
+            ..Default::default()
         };
 
         // Update with new price: USDCAD rises to 1.3600
@@ -1246,26 +1284,14 @@ mod test {
         // For profit (diff > 0), we use profit_bidask.bid = 1/1.3607 = 0.7350...
         // PnL in USD: 980 * 0.7350... ≈ 720.30 USD (with markup applied)
 
-        // Verify that profit_bidask was updated and markup was applied
-        // The reversed bidask should have markup applied (different from raw 1/1.3602)
-        assert!(position.profit_bidask.bid > 0.73);
-        assert!(position.profit_bidask.bid < 0.74);
-        
-        // The key verification: profit_bidask should have markup applied
-        // Without markup: bid would be 1/1.3602 = 0.735281...
-        // With markup: bid should be 1/(1.3602 + 0.0005) = 1/1.3607 = 0.7350...
-        // This confirms markup is being applied to the reversed bidask
-        let expected_bid_without_markup = 1.0 / 1.3602;
-        let expected_bid_with_markup = 1.0 / (1.3602 + 0.0005);
-        
-        // The actual bid should be closer to the markup version (our fix ensures this)
-        let diff_without = (position.profit_bidask.bid - expected_bid_without_markup).abs();
-        let diff_with = (position.profit_bidask.bid - expected_bid_with_markup).abs();
-        
-        // With the fix, diff_with should be smaller (markup is applied)
-        assert!(diff_with < diff_without, 
-            "Markup should be applied to reversed bidask. Expected closer to {} but got {}", 
-            expected_bid_with_markup, position.profit_bidask.bid);
+        // profit_bidask uses raw prices (no markup), matching trading-engine behavior.
+        // USDCAD reversed (CAD->USD): bid = 1/ask_raw = 1/1.3602 ≈ 0.73518
+        let expected_bid = 1.0 / 1.3602;
+        assert!(
+            (position.profit_bidask.bid - expected_bid).abs() < 1e-5,
+            "profit_bidask.bid should be raw reversed USDCAD ask: expected {expected_bid}, got {}",
+            position.profit_bidask.bid
+        );
     }
 
     #[tokio::test]
@@ -1343,6 +1369,7 @@ mod test {
             profit_bidask: MicroEngineBidask::create_blank(),
             profit_price_assets_subscriptions: vec!["USDCAD".to_string()], // Needs USDCAD to convert CAD->USD
             swaps_sum: 0.0,
+            ..Default::default()
         };
 
         // Price moves down: USDCAD drops from 1.3600 to 1.3500 (profit for SELL)
@@ -1519,6 +1546,7 @@ mod test {
             // IMPORTANT: subscribes to both USDCAD (direct) and EURUSD (for cross-rate fallback)
             profit_price_assets_subscriptions: vec!["USDCAD".to_string(), "EURUSD".to_string()],
             swaps_sum: 0.0,
+            ..Default::default()
         };
 
         // First update: EURCAD price moves (position instrument)
@@ -1585,5 +1613,228 @@ mod test {
         // PnL in USD: 980 * 0.7405 ≈ 725.67 USD
         
         assert!(position.profit_bidask.bid > 0.74 && position.profit_bidask.bid < 0.75);
+    }
+
+    fn make_bidask(id: &str, bid: f64, ask: f64) -> MicroEngineBidask {
+        MicroEngineBidask {
+            id: id.to_string(),
+            bid,
+            ask,
+            base: "EUR".to_string(),
+            quote: "USD".to_string(),
+        }
+    }
+
+    fn make_settings(digits: u32) -> crate::settings::MicroEngineTradingGroupSettings {
+        crate::settings::MicroEngineTradingGroupSettings {
+            id: "tg1".to_string(),
+            instruments: HashMap::from_iter(vec![(
+                "EURUSD".to_string(),
+                TradingGroupInstrumentSettings {
+                    digits,
+                    max_leverage: None,
+                    markup_settings: None,
+                },
+            )]),
+            hedge_coef: None,
+            collaterals: HashMap::from_iter(vec![(
+                "USD".to_string(),
+                crate::settings::CollateralSettings { digits: 2 },
+            )]),
+        }
+    }
+
+    fn make_cache() -> MicroEngineBidAskCache {
+        let (cache, _) = MicroEngineBidAskCache::new(
+            std::collections::HashSet::from_iter(vec!["USD".to_string()]),
+            vec![crate::bidask::MicroEngineInstrument {
+                id: "EURUSD".to_string(),
+                base: "EUR".to_string(),
+                quote: "USD".to_string(),
+            }],
+            vec![make_bidask("EURUSD", 1.1000, 1.1002)],
+        );
+        cache
+    }
+
+    // buy: SL moves up when bid rises above offset threshold
+    #[tokio::test]
+    pub async fn test_trailing_sl_buy_sl_moves_up() {
+        let mut cache = make_cache();
+        let settings = make_settings(5);
+
+        let mut position = MicroEnginePosition {
+            id: "p1".to_string(),
+            account_id: "acc1".to_string(),
+            asset_pair: "EURUSD".to_string(),
+            is_buy: true,
+            is_trailing_sl: true,
+            trailing_sl_offset: 0.00500, // 50 pips
+            sl_price: Some(1.09500),     // initial SL
+            active_bidask: make_bidask("EURUSD", 1.1000, 1.1002),
+            open_bidask: make_bidask("EURUSD", 1.1000, 1.1002),
+            profit_bidask: MicroEngineBidask::create_blank(),
+            ..Default::default()
+        };
+
+        // price rises: bid = 1.10800 → new SL = 1.10800 - 0.00500 = 1.10300
+        position.update_bidask(&make_bidask("EURUSD", 1.10800, 1.10820), &mut cache, &settings);
+        position.recalculate_trailing_sl(5);
+
+        let sl = position.sl_price.unwrap();
+        assert!(
+            (sl - 1.10300).abs() < 1e-5,
+            "Expected SL ≈ 1.10300, got {sl}"
+        );
+    }
+
+    // buy: SL does NOT move down when bid drops
+    #[tokio::test]
+    pub async fn test_trailing_sl_buy_sl_does_not_move_down() {
+        let mut cache = make_cache();
+        let settings = make_settings(5);
+
+        let mut position = MicroEnginePosition {
+            id: "p2".to_string(),
+            account_id: "acc1".to_string(),
+            asset_pair: "EURUSD".to_string(),
+            is_buy: true,
+            is_trailing_sl: true,
+            trailing_sl_offset: 0.00500,
+            sl_price: Some(1.10300), // already at high watermark
+            active_bidask: make_bidask("EURUSD", 1.1080, 1.1082),
+            open_bidask: make_bidask("EURUSD", 1.1000, 1.1002),
+            profit_bidask: MicroEngineBidask::create_blank(),
+            ..Default::default()
+        };
+
+        // price drops: bid = 1.10200 → computed SL = 1.09700, must NOT update
+        position.update_bidask(&make_bidask("EURUSD", 1.10200, 1.10220), &mut cache, &settings);
+        position.recalculate_trailing_sl(5);
+
+        let sl = position.sl_price.unwrap();
+        assert!(
+            (sl - 1.10300).abs() < 1e-5,
+            "SL should stay at 1.10300, got {sl}"
+        );
+    }
+
+    // sell: SL moves down when ask drops
+    #[tokio::test]
+    pub async fn test_trailing_sl_sell_sl_moves_down() {
+        let mut cache = make_cache();
+        let settings = make_settings(5);
+
+        let mut position = MicroEnginePosition {
+            id: "p3".to_string(),
+            account_id: "acc1".to_string(),
+            asset_pair: "EURUSD".to_string(),
+            is_buy: false,
+            is_trailing_sl: true,
+            trailing_sl_offset: 0.00500,
+            sl_price: Some(1.10500), // initial SL
+            active_bidask: make_bidask("EURUSD", 1.1000, 1.1002),
+            open_bidask: make_bidask("EURUSD", 1.1000, 1.1002),
+            profit_bidask: MicroEngineBidask::create_blank(),
+            ..Default::default()
+        };
+
+        // price drops: ask = 1.09220 → new SL = 1.09220 + 0.00500 = 1.09720
+        position.update_bidask(&make_bidask("EURUSD", 1.09200, 1.09220), &mut cache, &settings);
+        position.recalculate_trailing_sl(5);
+
+        let sl = position.sl_price.unwrap();
+        assert!(
+            (sl - 1.09720).abs() < 1e-5,
+            "Expected SL ≈ 1.09720, got {sl}"
+        );
+    }
+
+    // sell: SL does NOT move up when ask rises
+    #[tokio::test]
+    pub async fn test_trailing_sl_sell_sl_does_not_move_up() {
+        let mut cache = make_cache();
+        let settings = make_settings(5);
+
+        let mut position = MicroEnginePosition {
+            id: "p4".to_string(),
+            account_id: "acc1".to_string(),
+            asset_pair: "EURUSD".to_string(),
+            is_buy: false,
+            is_trailing_sl: true,
+            trailing_sl_offset: 0.00500,
+            sl_price: Some(1.09720), // already at low watermark
+            active_bidask: make_bidask("EURUSD", 1.09200, 1.09220),
+            open_bidask: make_bidask("EURUSD", 1.1000, 1.1002),
+            profit_bidask: MicroEngineBidask::create_blank(),
+            ..Default::default()
+        };
+
+        // price rises: ask = 1.09800 → computed SL = 1.10300, must NOT update
+        position.update_bidask(&make_bidask("EURUSD", 1.09780, 1.09800), &mut cache, &settings);
+        position.recalculate_trailing_sl(5);
+
+        let sl = position.sl_price.unwrap();
+        assert!(
+            (sl - 1.09720).abs() < 1e-5,
+            "SL should stay at 1.09720, got {sl}"
+        );
+    }
+
+    // non-TSL position: sl_price stays None
+    #[tokio::test]
+    pub async fn test_trailing_sl_disabled_no_sl_update() {
+        let mut cache = make_cache();
+        let settings = make_settings(5);
+
+        let mut position = MicroEnginePosition {
+            id: "p5".to_string(),
+            account_id: "acc1".to_string(),
+            asset_pair: "EURUSD".to_string(),
+            is_buy: true,
+            is_trailing_sl: false,
+            trailing_sl_offset: 0.00500,
+            sl_price: None,
+            active_bidask: make_bidask("EURUSD", 1.1000, 1.1002),
+            open_bidask: make_bidask("EURUSD", 1.1000, 1.1002),
+            profit_bidask: MicroEngineBidask::create_blank(),
+            ..Default::default()
+        };
+
+        position.update_bidask(&make_bidask("EURUSD", 1.11000, 1.11020), &mut cache, &settings);
+        position.recalculate_trailing_sl(5);
+
+        assert!(position.sl_price.is_none(), "sl_price must stay None for non-TSL position");
+    }
+
+    // rounding: SL is rounded to instrument digits
+    #[tokio::test]
+    pub async fn test_trailing_sl_rounding() {
+        let mut cache = make_cache();
+        let settings = make_settings(2); // 2 digits
+
+        let mut position = MicroEnginePosition {
+            id: "p6".to_string(),
+            account_id: "acc1".to_string(),
+            asset_pair: "EURUSD".to_string(),
+            is_buy: true,
+            is_trailing_sl: true,
+            trailing_sl_offset: 0.03333,
+            sl_price: None,
+            active_bidask: make_bidask("EURUSD", 1.1000, 1.1002),
+            open_bidask: make_bidask("EURUSD", 1.1000, 1.1002),
+            profit_bidask: MicroEngineBidask::create_blank(),
+            ..Default::default()
+        };
+
+        // bid = 1.10000, offset = 0.03333 → raw SL = 1.06667 → rounded to 2 digits = 1.07
+        position.update_bidask(&make_bidask("EURUSD", 1.10000, 1.10020), &mut cache, &settings);
+        position.recalculate_trailing_sl(2);
+
+        let sl = position.sl_price.unwrap();
+        assert!(
+            (sl - 1.07).abs() < 1e-9,
+            "Expected SL = 1.07 (rounded to 2 digits), got {sl}"
+        );
     }
 }

@@ -84,6 +84,7 @@ mod tests {
             profit_bidask: MicroEngineBidask::create_blank(),
             profit_price_assets_subscriptions: Vec::new(),
             swaps_sum: 0.0,
+            ..Default::default()
         }
     }
 

@@ -105,6 +105,7 @@ mod profit_subscription_tests {
             pl: 0.0,
             commission: 0.0,
             swaps_sum: 0.0,
+            ..Default::default()
         }
     }
 
