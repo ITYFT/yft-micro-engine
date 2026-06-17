@@ -81,6 +81,10 @@ impl MicroEngine {
             .insert_or_replace_settings(settings.clone());
     }
 
+    pub fn remove_trading_group(&mut self, group_id: &str) -> Vec<String> {
+        self.settings_cache.remove_group(group_id)
+    }
+
     pub async fn insert_or_update_account(
         &mut self,
         account: impl Into<MicroEngineAccount>,

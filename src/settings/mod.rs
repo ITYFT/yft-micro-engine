@@ -81,6 +81,15 @@ impl TradingSettingsCache {
 
         result
     }
+
+    pub fn remove_group(&mut self, group_id: &str) -> Vec<String> {
+        self.groups.remove(group_id);
+        self.accounts_mapping
+            .iter()
+            .filter(|(_, gid)| gid.as_str() == group_id)
+            .map(|(aid, _)| aid.clone())
+            .collect()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -638,5 +647,102 @@ mod tests {
 
         assert_eq!(format!("{:.5}", bid), "1.10150");
         assert_eq!(format!("{:.5}", ask), "1.10161");
+    }
+
+    #[test]
+    fn test_remove_group_removes_from_groups() {
+        let mut cache = TradingSettingsCache {
+            accounts_mapping: AHashMap::from_iter([
+                ("ACC1".to_string(), "G1".to_string()),
+                ("ACC2".to_string(), "G2".to_string()),
+            ]),
+            groups: AHashMap::from_iter([
+                ("G1".to_string(), MicroEngineTradingGroupSettings {
+                    id: "G1".to_string(),
+                    hedge_coef: None,
+                    instruments: Default::default(),
+                    collaterals: Default::default(),
+                }),
+                ("G2".to_string(), MicroEngineTradingGroupSettings {
+                    id: "G2".to_string(),
+                    hedge_coef: None,
+                    instruments: Default::default(),
+                    collaterals: Default::default(),
+                }),
+            ]),
+        };
+
+        cache.remove_group("G1");
+
+        assert!(!cache.groups.contains_key("G1"));
+        assert!(cache.groups.contains_key("G2"));
+    }
+
+    #[test]
+    fn test_remove_group_returns_affected_account_ids() {
+        let mut cache = TradingSettingsCache {
+            accounts_mapping: AHashMap::from_iter([
+                ("ACC1".to_string(), "G1".to_string()),
+                ("ACC2".to_string(), "G1".to_string()),
+                ("ACC3".to_string(), "G2".to_string()),
+            ]),
+            groups: AHashMap::from_iter([
+                ("G1".to_string(), MicroEngineTradingGroupSettings {
+                    id: "G1".to_string(),
+                    hedge_coef: None,
+                    instruments: Default::default(),
+                    collaterals: Default::default(),
+                }),
+            ]),
+        };
+
+        let mut affected = cache.remove_group("G1");
+        affected.sort();
+
+        assert_eq!(affected, vec!["ACC1".to_string(), "ACC2".to_string()]);
+    }
+
+    #[test]
+    fn test_remove_group_nonexistent_is_noop() {
+        let mut cache = TradingSettingsCache {
+            accounts_mapping: AHashMap::from_iter([
+                ("ACC1".to_string(), "G1".to_string()),
+            ]),
+            groups: AHashMap::from_iter([
+                ("G1".to_string(), MicroEngineTradingGroupSettings {
+                    id: "G1".to_string(),
+                    hedge_coef: None,
+                    instruments: Default::default(),
+                    collaterals: Default::default(),
+                }),
+            ]),
+        };
+
+        let affected = cache.remove_group("DOES_NOT_EXIST");
+
+        assert!(affected.is_empty());
+        assert!(cache.groups.contains_key("G1"));
+    }
+
+    #[test]
+    fn test_remove_group_does_not_touch_accounts_mapping() {
+        let mut cache = TradingSettingsCache {
+            accounts_mapping: AHashMap::from_iter([
+                ("ACC1".to_string(), "G1".to_string()),
+            ]),
+            groups: AHashMap::from_iter([
+                ("G1".to_string(), MicroEngineTradingGroupSettings {
+                    id: "G1".to_string(),
+                    hedge_coef: None,
+                    instruments: Default::default(),
+                    collaterals: Default::default(),
+                }),
+            ]),
+        };
+
+        cache.remove_group("G1");
+
+        // accounts_mapping preserved intentionally — migration happens via SB events
+        assert_eq!(cache.accounts_mapping.get("ACC1").map(|s| s.as_str()), Some("G1"));
     }
 }
