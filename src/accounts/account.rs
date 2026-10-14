@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use crate::{
     positions::position::MicroEnginePosition,
+    round_float_to_digits,
     settings::{MicroEngineTradingGroupSettings, TradingGroupInstrumentSettings},
 };
 
@@ -35,16 +36,25 @@ impl MicroEngineAccount {
         account_positions: &[&MicroEnginePosition],
         settings: &MicroEngineTradingGroupSettings,
     ) -> MicroEngineAccountCalculationUpdate {
-        let (margin, gross_pl) =
+        let (raw_margin, gross_pl) =
             self.calculate_margin_and_gross_pl(account_positions, settings.hedge_coef, settings);
+
+        // The trading engine is authoritative for these numbers (it triggers margin calls and
+        // stop-outs), so they are rounded exactly as trading-engine-core does
+        // (positions/cache/account_statistic.rs):
+        // - the account margin is rounded to the collateral's digits,
+        // - free margin is derived from the ROUNDED margin,
+        // - margin level is derived from the rounded margin and rounded to 2 decimals,
+        // - margin level is 0 for an account without positions.
+        let margin = round_float_to_digits(
+            raw_margin,
+            account_collateral_digits(account_positions, settings),
+        );
 
         self.margin = margin;
         self.equity = self.balance + gross_pl;
         self.free_margin = self.equity - self.margin;
-        self.margin_level = match margin < 0.00001 {
-            true => 0.0,
-            false => self.equity / margin * 100.0,
-        };
+        self.margin_level = calculate_margin_level(self.equity, margin, account_positions.is_empty());
 
         MicroEngineAccountCalculationUpdate {
             account_id: self.id.clone(),
@@ -89,6 +99,31 @@ impl MicroEngineAccount {
 
         (total_margin, total_gross_pl)
     }
+}
+
+/// Digits of the account's collateral. The account margin is non-zero only when the account has
+/// positions, and every position is held in the account's collateral, so the positions name it.
+/// Falls back to 2, like the position P&L rounding, when the collateral has no settings.
+pub(crate) fn account_collateral_digits(
+    account_positions: &[&MicroEnginePosition],
+    settings: &MicroEngineTradingGroupSettings,
+) -> i32 {
+    account_positions
+        .iter()
+        .find_map(|position| settings.collaterals.get(&position.collateral))
+        .map(|collateral| collateral.digits as i32)
+        .unwrap_or(2)
+}
+
+/// `equity / margin * 100`, rounded to 2 decimals, from the already rounded margin; 0 without
+/// positions. With positions and a margin that rounds to 0 the engine would divide by zero; this
+/// returns 0 there instead of a non-finite number, which JSON cannot carry.
+pub(crate) fn calculate_margin_level(equity: f64, rounded_margin: f64, has_no_positions: bool) -> f64 {
+    if has_no_positions || rounded_margin == 0.0 {
+        return 0.0;
+    }
+
+    round_float_to_digits(equity / rounded_margin * 100.0, 2)
 }
 
 fn calculate_specific_instrument_margin_and_gross_pl(

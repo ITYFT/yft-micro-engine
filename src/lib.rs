@@ -386,9 +386,11 @@ mod tests {
         let account_update = account_update.unwrap().first().cloned().unwrap();
 
         assert_eq!(format!("{:.5}", account_update.total_gross), "-0.60000");
-        assert_eq!(format!("{:.5}", account_update.margin), "62.77100");
+        // Margin rounded to the USD collateral's 2 digits, free margin from the rounded margin,
+        // as the trading engine reports them (SKILLTRADE-537). Unrounded: 62.771 / 12.554.
+        assert_eq!(format!("{:.5}", account_update.margin), "62.77000");
         assert_eq!(format!("{:.5}", account_update.equity), "99999.40000");
-        assert_eq!(format!("{:.5}", account_update.free_margin), "99936.62900");
+        assert_eq!(format!("{:.5}", account_update.free_margin), "99936.63000");
 
         assert!(errors.is_empty());
     }
@@ -470,9 +472,11 @@ mod tests {
         let account_update = account_update.unwrap().first().cloned().unwrap();
 
         assert_eq!(format!("{:.5}", account_update.total_gross), "-0.11000");
-        assert_eq!(format!("{:.5}", account_update.margin), "12.55400");
+        // Margin rounded to the USD collateral's 2 digits, free margin from the rounded margin,
+        // as the trading engine reports them (SKILLTRADE-537). Unrounded: 62.771 / 12.554.
+        assert_eq!(format!("{:.5}", account_update.margin), "12.55000");
         assert_eq!(format!("{:.5}", account_update.equity), "99999.89000");
-        assert_eq!(format!("{:.5}", account_update.free_margin), "99987.33600");
+        assert_eq!(format!("{:.5}", account_update.free_margin), "99987.34000");
 
         assert!(errors.is_empty());
     }
@@ -554,9 +558,11 @@ mod tests {
         let account_update = account_update.unwrap().first().cloned().unwrap();
 
         assert_eq!(format!("{:.5}", account_update.total_gross), "-15.15000");
-        assert_eq!(format!("{:.5}", account_update.margin), "62.77100");
+        // Margin rounded to the USD collateral's 2 digits, free margin from the rounded margin,
+        // as the trading engine reports them (SKILLTRADE-537). Unrounded: 62.771 / 12.554.
+        assert_eq!(format!("{:.5}", account_update.margin), "62.77000");
         assert_eq!(format!("{:.5}", account_update.equity), "99984.85000");
-        assert_eq!(format!("{:.5}", account_update.free_margin), "99922.07900");
+        assert_eq!(format!("{:.5}", account_update.free_margin), "99922.08000");
 
         assert!(errors.is_empty());
     }
